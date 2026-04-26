@@ -1,0 +1,199 @@
+<!doctype html>
+<!--
+  Emscripten --shell-file template. {{{ SCRIPT }}} is substituted with
+  the module loader. Settings panel is a DOM overlay; each input fires
+  Module.ccall into the C bridge in web/main.cpp.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Singularity — WebGPU demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #eee;
+                 font-family: ui-sans-serif, system-ui, sans-serif; }
+    #stage { position: relative; width: 960px; margin: 0 auto; }
+    #canvas { display: block; background: #000;
+              width: 960px; height: 540px;
+              image-rendering: pixelated; }
+    #caption { position: fixed; top: 12px; left: 12px; opacity: 0.85;
+               font-size: 12px; line-height: 1.4; pointer-events: none;
+               text-shadow: 0 1px 2px #000; z-index: 5; }
+
+    #panel {
+      position: absolute; top: 12px; right: 12px;
+      width: 240px; max-height: calc(100% - 24px);
+      overflow-y: auto;
+      padding: 12px 14px; border: 1px solid #2a2a2a;
+      background: rgba(10, 10, 10, 0.78);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      color: #e8e8e8; font-size: 12px; line-height: 1.4;
+      border-radius: 6px;
+      z-index: 10;
+    }
+    #panel h3 {
+      margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #ffb86c;
+    }
+    #panel h3:not(:first-child) { margin-top: 14px; border-top: 1px solid #2a2a2a; padding-top: 10px; }
+    #panel label { display: block; margin: 6px 0 2px; color: #c8c8c8; }
+    #panel .row { display: flex; gap: 6px; align-items: center; }
+    #panel .row .v { color: #9a9a9a; min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+    #panel input[type=range] { width: 100%; accent-color: #ffb86c; }
+    #panel select, #panel button {
+      width: 100%; padding: 4px 6px;
+      background: #1a1a1a; color: #e8e8e8;
+      border: 1px solid #333; border-radius: 3px;
+      font-family: inherit; font-size: 12px;
+    }
+    #panel button:hover { background: #222; cursor: pointer; }
+    #panel .toggle { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+    #panel .toggle input { accent-color: #ffb86c; }
+    #panel .hint { color: #707070; font-size: 11px; margin-top: 10px; }
+
+    #fallback { display: none; max-width: 48rem; margin: 3rem auto;
+                padding: 2rem; border: 1px solid #444; background: #111; }
+    #fallback.show { display: block; }
+    a { color: #8bd; }
+  </style>
+</head>
+<body>
+  <div id="caption">
+    <b>Singularity</b> — Kerr/Schwarzschild black-hole ray tracer<br />
+    drag canvas to orbit · scroll to zoom · use the panel to tune
+  </div>
+
+  <div id="stage">
+    <canvas id="canvas" width="960" height="540"></canvas>
+
+    <div id="panel">
+      <h3>Black hole</h3>
+      <label>Metric</label>
+      <select id="ui-metric">
+        <option value="0">Schwarzschild</option>
+        <option value="1" selected>Kerr</option>
+      </select>
+      <label>Spin a/M <span class="v" id="v-spin">0.900</span></label>
+      <input type="range" id="ui-spin" min="0" max="0.998" step="0.001" value="0.9">
+
+      <h3>Disc</h3>
+      <div class="toggle"><input type="checkbox" id="ui-disc-on" checked><label for="ui-disc-on">Visible</label></div>
+      <label>Inner radius (M) <span class="v" id="v-inner">3.50</span></label>
+      <input type="range" id="ui-inner" min="1.5" max="30" step="0.05" value="3.5">
+      <label>Outer radius (M) <span class="v" id="v-outer">30.0</span></label>
+      <input type="range" id="ui-outer" min="5" max="60" step="0.1" value="30">
+      <label>Peak temperature (K) <span class="v" id="v-temp">18000</span></label>
+      <input type="range" id="ui-temp" min="1500" max="25000" step="100" value="18000">
+      <label>Band turbulence <span class="v" id="v-turb">0.50</span></label>
+      <input type="range" id="ui-turb" min="0" max="1" step="0.01" value="0.5">
+      <div class="toggle"><input type="checkbox" id="ui-doppler" checked><label for="ui-doppler">Doppler beaming</label></div>
+      <div class="toggle"><input type="checkbox" id="ui-redshift" checked><label for="ui-redshift">Gravitational redshift</label></div>
+
+      <h3>Cinematics</h3>
+      <label>Exposure <span class="v" id="v-exp">1.80</span></label>
+      <input type="range" id="ui-exp" min="0.1" max="4" step="0.01" value="1.8">
+      <label>Bloom threshold <span class="v" id="v-bt">0.80</span></label>
+      <input type="range" id="ui-bt" min="0.1" max="5" step="0.05" value="0.8">
+      <label>Bloom strength <span class="v" id="v-bs">0.55</span></label>
+      <input type="range" id="ui-bs" min="0" max="1.5" step="0.01" value="0.55">
+      <label>FOV (deg) <span class="v" id="v-fov">60</span></label>
+      <input type="range" id="ui-fov" min="20" max="120" step="1" value="60">
+
+      <button id="ui-reset" style="margin-top: 12px">Reset to defaults</button>
+      <div class="hint">click on the canvas to take camera control</div>
+    </div>
+  </div>
+
+  <div id="fallback">
+    <h2>WebGPU is not available in this browser.</h2>
+    <p>
+      Try a recent Chrome, Edge, or Safari 17.4+, or a Firefox Nightly
+      with <code>dom.webgpu.enabled</code> set to <code>true</code>.
+      Alternatively, download a native release:
+    </p>
+    <ul>
+      <li><a href="https://github.com/mal0ware/Singularity/releases">macOS .dmg / Windows .msi</a></li>
+    </ul>
+  </div>
+
+  <script>
+    if (!navigator.gpu) {
+      document.getElementById("fallback").classList.add("show");
+      document.getElementById("stage").style.display = "none";
+    } else {
+      window.Module = window.Module || {};
+      Module.canvas = document.getElementById("canvas");
+
+      // Wire DOM controls -> wasm setters once the runtime is ready.
+      // Module.onRuntimeInitialized fires after the wasm module loads
+      // AND its main() runs (which is where the backend init kicks off).
+      Module.onRuntimeInitialized = function () {
+        const call = function (name, type, value) {
+          try { Module.ccall(name, null, [type], [value]); }
+          catch (e) { /* runtime not ready or function not exported */ }
+        };
+        const bindRange = function (id, vId, fn, fmt) {
+          const el = document.getElementById(id);
+          const vel = document.getElementById(vId);
+          const update = function () {
+            const f = parseFloat(el.value);
+            if (vel) vel.textContent = fmt ? fmt(f) : f.toFixed(2);
+            fn(f);
+          };
+          el.addEventListener("input", update);
+          update();
+        };
+        const bindCheck = function (id, fn) {
+          const el = document.getElementById(id);
+          const update = function () { fn(el.checked ? 1 : 0); };
+          el.addEventListener("change", update);
+          update();
+        };
+        const bindSelect = function (id, fn) {
+          const el = document.getElementById(id);
+          const update = function () { fn(parseInt(el.value, 10)); };
+          el.addEventListener("change", update);
+          update();
+        };
+
+        bindSelect("ui-metric",   function (v) { call("singularity_set_metric",          "number", v); });
+        bindRange ("ui-spin",     "v-spin",     function (v) { call("singularity_set_spin",            "number", v); }, function (f) { return f.toFixed(3); });
+        bindCheck ("ui-disc-on",                function (v) { call("singularity_set_disc_visible",    "number", v); });
+        bindRange ("ui-inner",    "v-inner",    function (v) { call("singularity_set_disc_inner",      "number", v); });
+        bindRange ("ui-outer",    "v-outer",    function (v) { call("singularity_set_disc_outer",      "number", v); }, function (f) { return f.toFixed(1); });
+        bindRange ("ui-temp",     "v-temp",     function (v) { call("singularity_set_disc_peak_t",     "number", v); }, function (f) { return f.toFixed(0); });
+        bindRange ("ui-turb",     "v-turb",     function (v) { call("singularity_set_disc_turbulence", "number", v); });
+        bindCheck ("ui-doppler",                function (v) { call("singularity_set_doppler",         "number", v); });
+        bindCheck ("ui-redshift",               function (v) { call("singularity_set_redshift",        "number", v); });
+        bindRange ("ui-exp",      "v-exp",      function (v) { call("singularity_set_exposure",        "number", v); });
+        bindRange ("ui-bt",       "v-bt",       function (v) { call("singularity_set_bloom_threshold", "number", v); });
+        bindRange ("ui-bs",       "v-bs",       function (v) { call("singularity_set_bloom_strength",  "number", v); });
+        bindRange ("ui-fov",      "v-fov",      function (v) { call("singularity_set_fov",             "number", v); }, function (f) { return f.toFixed(0); });
+
+        document.getElementById("ui-reset").addEventListener("click", function () {
+          try { Module.ccall("singularity_reset", null, [], []); } catch (e) {}
+          // Resync the form widgets to the new (default) state.
+          document.getElementById("ui-metric").value   = "1";
+          document.getElementById("ui-spin").value     = "0.9";
+          document.getElementById("ui-disc-on").checked = true;
+          document.getElementById("ui-inner").value    = "3.5";
+          document.getElementById("ui-outer").value    = "30";
+          document.getElementById("ui-temp").value     = "18000";
+          document.getElementById("ui-turb").value     = "0.5";
+          document.getElementById("ui-doppler").checked  = true;
+          document.getElementById("ui-redshift").checked = true;
+          document.getElementById("ui-exp").value      = "1.8";
+          document.getElementById("ui-bt").value       = "0.8";
+          document.getElementById("ui-bs").value       = "0.55";
+          document.getElementById("ui-fov").value      = "60";
+          ["ui-spin","ui-inner","ui-outer","ui-temp","ui-turb","ui-exp","ui-bt","ui-bs","ui-fov"]
+            .forEach(function (id) { document.getElementById(id).dispatchEvent(new Event("input")); });
+        });
+      };
+    }
+  </script>
+
+  {{{ SCRIPT }}}
+</body>
+</html>

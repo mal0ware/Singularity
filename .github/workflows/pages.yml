@@ -1,0 +1,84 @@
+# pages — build the Jekyll docs site + the WebGPU/WASM demo bundle and
+# deploy to GitHub Pages. Mirrors the build-web job in ci.yml.
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't cancel in-progress deploys: a half-deployed Pages site is worse than
+# a slightly-stale one, so let any in-flight run finish before the next.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build site + demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      # WebGPU/WASM demo bundle. Mirrors the build-web job in ci.yml.
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Build WASM bundle (emcmake)
+        run: |
+          emcmake cmake -B build-wasm \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSINGULARITY_BUILD_WEB=ON \
+            -DSINGULARITY_BUILD_APP=OFF \
+            -DSINGULARITY_BUILD_CLI=OFF \
+            -DSINGULARITY_BUILD_TESTS=OFF
+          cmake --build build-wasm --parallel
+
+      # Stage demo INSIDE the Jekyll source. Copying after Jekyll runs
+      # hits a permissions wall (jekyll-build-pages writes _site as a
+      # different UID).
+      - name: Stage WebGPU demo into docs/demo/
+        run: |
+          mkdir -p docs/demo
+          cp build-wasm/web/singularity_web.html docs/demo/
+          cp build-wasm/web/singularity_web.js   docs/demo/
+          cp build-wasm/web/singularity_web.wasm docs/demo/
+          cp build-wasm/web/singularity_web.data docs/demo/
+
+      # Jekyll site.
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

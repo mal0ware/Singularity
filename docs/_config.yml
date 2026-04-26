@@ -1,0 +1,34 @@
+title: Singularity
+description: Real-time physically-accurate black hole renderer
+url: https://mal0ware.github.io
+baseurl: /Singularity
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
+
+theme: null
+plugins: []
+
+permalink: /:title/
+
+# Files at the docs/ root that should NOT render as Jekyll pages. Project-spec
+# markdown (PRD/TODO/PHASE notes) lives in this dir for proximity to the code,
+# but the public site only surfaces the curated landing/about/download set
+# plus the two long-form references that have explicit front-matter.
+exclude:
+  - README.md
+  - TODO.md
+  - PRD.md
+  - NEXT_STEPS_MAC.md
+  - NEXT_STEPS_WINDOWS.md
+  - PHASE7_WEBGPU.md
+  - PHASE8_CUDA.md
+  - examples/
+
+# Don't let Jekyll auto-generate `images/` index pages; just serve the files.
+keep_files:
+  - images
+  - demo

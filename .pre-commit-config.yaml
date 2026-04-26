@@ -1,0 +1,42 @@
+# Pre-commit hooks for Singularity. Install: `pip install pre-commit && pre-commit install`.
+#
+# Mirrors the lint job in .github/workflows/ci.yml so a clean local run
+# should match CI. clang-format and clang-tidy pin to the same version CI uses
+# (clang-17) so formatting diffs aren't a version-drift artifact.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^third_party/
+      - id: end-of-file-fixer
+        exclude: ^third_party/
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        exclude: ^third_party/
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v17.0.6
+    hooks:
+      - id: clang-format
+        types_or: [c++, c, objective-c]
+        files: ^(core|render|app|cli|tests|shared_shader)/.*\.(cpp|hpp|h|mm|cxx|cc)$
+        exclude: ^third_party/
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.8
+    hooks:
+      - id: ruff
+        files: ^verification/.*\.py$
+        args: [--fix]
+
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        files: ^verification/.*\.py$
+        args: [--line-length=100]

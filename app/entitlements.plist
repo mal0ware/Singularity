@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Allow Metal's runtime JIT of shader permutations. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- Required with hardened runtime so metal-cpp / imgui can pull in
+         frameworks the code signature wouldn't pre-blank otherwise. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Network egress is off for v1.0 — the app is fully local. Flip to
+         true if a future version phones home for updates or telemetry. -->
+    <key>com.apple.security.network.client</key>
+    <false/>
+</dict>
+</plist>

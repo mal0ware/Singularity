@@ -1,0 +1,4 @@
+mass = 1.0
+spin = 0.5
+disc_r_inner = 4.0
+disc_r_outer = 30.0
