@@ -4,6 +4,8 @@
 [![codecov](https://codecov.io/gh/mal0ware/Singularity/branch/main/graph/badge.svg)](https://codecov.io/gh/mal0ware/Singularity)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+**[Try the live demo in your browser](https://mal0ware.github.io/Singularity/)** — the WebGPU build runs on the project site, no install required.
+
 A real-time, physically accurate black-hole renderer. Each pixel of each frame integrates a null geodesic backwards through curved spacetime: a photon launched from the camera, traced through the Schwarzschild or Kerr metric, until it falls through the event horizon, intersects the accretion disc, or escapes to the celestial sphere. The full geodesic equation runs in the compute kernel. No precomputed lensing tables, no screen-space approximations.
 
 Four GPU backends share a single C++ physics core: Metal on macOS, Vulkan on Windows and Linux, WebGPU in the browser, CUDA for offline supersampled stills.
@@ -206,6 +208,7 @@ For the underlying GR and lensing math, cite the source the implementation deriv
 
 Code (including shaders): [MIT](LICENSE).
 Documentation and rendered images: [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+See [`LICENSE`](LICENSE) for the code license and [`LICENSE-docs.md`](LICENSE-docs.md) for the documentation and media licensing terms.
 
 ## Acknowledgments
 
