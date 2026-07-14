@@ -6,6 +6,12 @@
 
 **[Try the live demo in your browser](https://mal0ware.github.io/Singularity/)** — the WebGPU build runs on the project site, no install required.
 
+## Status
+
+- **v1.0.0 shipped** (April 2026): Metal, Vulkan, and WebGPU real-time backends, CUDA offline path, live web demo, docs site.
+- **v1.1** (video export and related milestones): not yet started.
+- **Vulkan backend**: compile-validated in CI and runtime-smoked on Windows (RTX 3080, offscreen single-frame `--capture` renders, Schwarzschild and Kerr). Interactive validation and the Metal-equivalence perceptual-hash check are still pending.
+
 A real-time, physically accurate black-hole renderer. Each pixel of each frame integrates a null geodesic backwards through curved spacetime: a photon launched from the camera, traced through the Schwarzschild or Kerr metric, until it falls through the event horizon, intersects the accretion disc, or escapes to the celestial sphere. The full geodesic equation runs in the compute kernel. No precomputed lensing tables, no screen-space approximations.
 
 Four GPU backends share a single C++ physics core: Metal on macOS, Vulkan on Windows and Linux, WebGPU in the browser, CUDA for offline supersampled stills.
