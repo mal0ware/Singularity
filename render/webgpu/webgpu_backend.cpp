@@ -126,7 +126,15 @@ void pack_uniforms(Uniforms& out,
     out.aspect = (h == 0) ? 1.0f : float(w) / float(h);
 
     out.h_step = scene.h_step > 0.0f ? scene.h_step : 0.12f;
-    out.escape_r = 200.0f;
+    // Dynamic escape radius: residual deflection beyond ~2× the camera
+    // radius shifts the sampled sky direction by well under a degree, so
+    // integrating out to a fixed 200M is wasted budget when the camera sits
+    // at 30M. Web-only behaviour — the desktop backends keep their fixed
+    // 200M and their goldens.
+    const float cam_r = std::sqrt(cam.position[0] * cam.position[0]
+                                  + cam.position[1] * cam.position[1]
+                                  + cam.position[2] * cam.position[2]);
+    out.escape_r = std::min(200.0f, std::max(60.0f, 2.0f * cam_r));
     // Kerr sets its own tighter horizon cut in-kernel; this covers the
     // Schwarzschild path.
     out.horizon_cut = 1.02f * out.rs;
@@ -144,6 +152,8 @@ void pack_uniforms(Uniforms& out,
         flags |= SING_FLAG_DOPPLER_ON;
     if (scene.disc_redshift_on)
         flags |= SING_FLAG_REDSHIFT_ON;
+    if (scene.adaptive_step_on)
+        flags |= SING_FLAG_ADAPTIVE_STEP;
     out.flags = flags;
 
     out.max_steps = scene.max_steps != 0 ? scene.max_steps : 800u;
@@ -221,6 +231,15 @@ struct WebGPUBackend::Impl {
     std::atomic<bool> ready{false};
     std::uint32_t width = 0;
     std::uint32_t height = 0;
+    // Internal render scale — geodesic/HDR/bloom run at scale × canvas;
+    // the blit's linear sampler upscales to the full-size surface.
+    float render_scale = 1.0f;
+    std::uint32_t render_w() const {
+        return std::max<std::uint32_t>(1u, std::uint32_t(float(width) * render_scale + 0.5f));
+    }
+    std::uint32_t render_h() const {
+        return std::max<std::uint32_t>(1u, std::uint32_t(float(height) * render_scale + 0.5f));
+    }
     std::uint32_t frame = 0;
     std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
     bool vsync = true;
@@ -401,21 +420,23 @@ static void build_pipelines_and_layouts(WebGPUBackend::Impl& im) {
     }
 
     // Blit (set 0): hdr sampled, bloom sampled, sampler, uniform (BlitParams).
+    // Filterable float + filtering sampler — the blit is also the upscale
+    // path when the internal render scale is below 1.
     {
         wgpu::BindGroupLayoutEntry entries[4]{};
         entries[0].binding = 0;
         entries[0].visibility = wgpu::ShaderStage::Fragment;
-        entries[0].texture.sampleType = wgpu::TextureSampleType::UnfilterableFloat;
+        entries[0].texture.sampleType = wgpu::TextureSampleType::Float;
         entries[0].texture.viewDimension = wgpu::TextureViewDimension::e2D;
 
         entries[1].binding = 1;
         entries[1].visibility = wgpu::ShaderStage::Fragment;
-        entries[1].texture.sampleType = wgpu::TextureSampleType::UnfilterableFloat;
+        entries[1].texture.sampleType = wgpu::TextureSampleType::Float;
         entries[1].texture.viewDimension = wgpu::TextureViewDimension::e2D;
 
         entries[2].binding = 2;
         entries[2].visibility = wgpu::ShaderStage::Fragment;
-        entries[2].sampler.type = wgpu::SamplerBindingType::NonFiltering;
+        entries[2].sampler.type = wgpu::SamplerBindingType::Filtering;
 
         entries[3].binding = 3;
         entries[3].visibility = wgpu::ShaderStage::Fragment;
@@ -512,9 +533,12 @@ static void build_pipelines_and_layouts(WebGPUBackend::Impl& im) {
         im.blit_params_buf = im.device.CreateBuffer(&d);
     }
     {
+        // Linear so the blit doubles as the upscale filter when the
+        // internal render scale drops below 1 (rgba16float is filterable
+        // in core WebGPU).
         wgpu::SamplerDescriptor d{};
-        d.minFilter = wgpu::FilterMode::Nearest;
-        d.magFilter = wgpu::FilterMode::Nearest;
+        d.minFilter = wgpu::FilterMode::Linear;
+        d.magFilter = wgpu::FilterMode::Linear;
         d.mipmapFilter = wgpu::MipmapFilterMode::Nearest;
         d.addressModeU = wgpu::AddressMode::ClampToEdge;
         d.addressModeV = wgpu::AddressMode::ClampToEdge;
@@ -523,10 +547,11 @@ static void build_pipelines_and_layouts(WebGPUBackend::Impl& im) {
 }
 
 // Create / re-create the HDR + bloom textures + bind groups at the
-// current width/height. Called once from init and once per resize.
+// current *internal* resolution (render_scale × canvas). Called from init,
+// resize, and every internal-scale change.
 static void build_size_dependent_resources(WebGPUBackend::Impl& im) {
-    const std::uint32_t w = std::max<std::uint32_t>(im.width, 1);
-    const std::uint32_t h = std::max<std::uint32_t>(im.height, 1);
+    const std::uint32_t w = im.render_w();
+    const std::uint32_t h = im.render_h();
     const std::uint32_t bw = std::max<std::uint32_t>(w / 2, 1);
     const std::uint32_t bh = std::max<std::uint32_t>(h / 2, 1);
 
@@ -670,6 +695,24 @@ void WebGPUBackend::resize(std::uint32_t width, std::uint32_t height) {
 #endif
 }
 
+void WebGPUBackend::set_internal_scale(float scale) {
+    scale = std::max(0.25f, std::min(1.0f, scale));
+    if (std::fabs(scale - impl_->render_scale) < 1e-3f)
+        return;
+    impl_->render_scale = scale;
+#if SINGULARITY_WEBGPU_AVAILABLE
+    if (!impl_->ready.load(std::memory_order_acquire))
+        return;
+    // The surface (canvas) is untouched — only the HDR/bloom chain and its
+    // bind groups are re-created at the new internal resolution.
+    build_size_dependent_resources(*impl_);
+#endif
+}
+
+float WebGPUBackend::internal_scale() const {
+    return impl_->render_scale;
+}
+
 // ---------------------------------------------------------------------------
 // Per-frame
 // ---------------------------------------------------------------------------
@@ -685,7 +728,7 @@ void WebGPUBackend::render_frame(const Scene& scene, const CameraState& camera) 
     Uniforms uni{};
     const auto now = std::chrono::steady_clock::now();
     const float elapsed = std::chrono::duration<float>(now - impl_->start_time).count();
-    pack_uniforms(uni, scene, camera, impl_->width, impl_->height, impl_->frame, elapsed);
+    pack_uniforms(uni, scene, camera, impl_->render_w(), impl_->render_h(), impl_->frame, elapsed);
     impl_->queue.WriteBuffer(impl_->uniforms_buf, 0, &uni, sizeof(uni));
 
     ExtractParams ep{};
@@ -719,12 +762,14 @@ void WebGPUBackend::render_frame(const Scene& scene, const CameraState& camera) 
 
         cp.SetPipeline(impl_->geodesic_pipeline);
         cp.SetBindGroup(0, impl_->geodesic_bg);
-        const std::uint32_t gx = (impl_->width + 7) / 8;
-        const std::uint32_t gy = (impl_->height + 7) / 8;
+        const std::uint32_t rw = impl_->render_w();
+        const std::uint32_t rh = impl_->render_h();
+        const std::uint32_t gx = (rw + 7) / 8;
+        const std::uint32_t gy = (rh + 7) / 8;
         cp.DispatchWorkgroups(gx, gy, 1);
 
-        const std::uint32_t bx = (std::max<std::uint32_t>(impl_->width / 2, 1) + 7) / 8;
-        const std::uint32_t by = (std::max<std::uint32_t>(impl_->height / 2, 1) + 7) / 8;
+        const std::uint32_t bx = (std::max<std::uint32_t>(rw / 2, 1) + 7) / 8;
+        const std::uint32_t by = (std::max<std::uint32_t>(rh / 2, 1) + 7) / 8;
 
         cp.SetPipeline(impl_->bloom_extract_pipeline);
         cp.SetBindGroup(0, impl_->bloom_extract_bg);

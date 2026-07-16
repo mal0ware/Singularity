@@ -27,6 +27,12 @@ struct OrbitalCamera {
     float fov_y_deg = 60.0f;
 };
 
+// Internal-resolution ladder the dynamic controller walks. Quantized so a
+// scale change (which re-creates the HDR/bloom textures) happens at most a
+// handful of times per session, not per frame.
+constexpr float kScaleSteps[] = {0.4f, 0.5f, 0.65f, 0.8f, 1.0f};
+constexpr int kScaleCount = 5;
+
 struct WebApp {
     singularity::webgpu::WebGPUBackend backend;
     singularity::Scene scene{};
@@ -41,9 +47,70 @@ struct WebApp {
     // Auto-orbit until first canvas pointer interaction. Panel widgets hit
     // the overlay div, not the canvas, so they don't kill it.
     bool auto_orbit = true;
+
+    // --- Performance state -------------------------------------------------
+    int quality = 1;          // 0 Draft / 1 Balanced / 2 Quality (panel)
+    int resolution_mode = 0;  // 0 Auto / 1 100% / 2 75% / 3 50%
+    int scale_idx = kScaleCount - 1;  // current rung on kScaleSteps
+    double ema_ms = 16.7;             // frame-time EMA (ms)
+    double last_now_ms = 0.0;
+    int ctrl_cooldown = 0;      // frames until the controller may act again
+    double last_wheel_ms = -1.0e9;
 };
 
 WebApp g_app;
+
+// Integration presets. With the adaptive integrator on, h_step is the
+// *base* step near the hole — the far field steps up to 40× coarser
+// (see shared_shader/geodesic_math.h adaptive_h).
+void apply_integration_quality(bool interacting) {
+    struct Preset {
+        float h;
+        std::uint32_t steps;
+    };
+    // Draft / Balanced / Quality.
+    constexpr Preset kPresets[3] = {{0.25f, 600u}, {0.12f, 1200u}, {0.07f, 2200u}};
+    const int q = std::max(0, std::min(2, g_app.quality));
+    const Preset p = interacting ? kPresets[0] : kPresets[q];
+    g_app.scene.h_step = p.h;
+    g_app.scene.max_steps = p.steps;
+}
+
+// Dynamic-resolution controller: walk kScaleSteps to hold ~60 FPS.
+// Hysteresis via asymmetric thresholds + a cooldown so a single slow frame
+// (GC pause, tab wake) doesn't thrash texture re-creation.
+void update_resolution_controller(double now_ms) {
+    if (g_app.last_now_ms > 0.0) {
+        double dt = now_ms - g_app.last_now_ms;
+        if (dt < 0.0)
+            dt = 0.0;
+        if (dt > 100.0)
+            dt = 100.0;
+        g_app.ema_ms = 0.9 * g_app.ema_ms + 0.1 * dt;
+    }
+    g_app.last_now_ms = now_ms;
+
+    int target_idx = g_app.scale_idx;
+    if (g_app.resolution_mode != 0) {
+        // Fixed modes: 100% / 75% / 50% map onto the nearest ladder rungs.
+        target_idx = (g_app.resolution_mode == 1) ? kScaleCount - 1
+                     : (g_app.resolution_mode == 2) ? 3
+                                                    : 1;
+    } else if (g_app.ctrl_cooldown > 0) {
+        --g_app.ctrl_cooldown;
+    } else if (g_app.ema_ms > 20.0 && g_app.scale_idx > 0) {
+        target_idx = g_app.scale_idx - 1;
+        g_app.ctrl_cooldown = 45;
+    } else if (g_app.ema_ms < 11.5 && g_app.scale_idx < kScaleCount - 1) {
+        target_idx = g_app.scale_idx + 1;
+        g_app.ctrl_cooldown = 90;
+    }
+
+    if (target_idx != g_app.scale_idx) {
+        g_app.scale_idx = target_idx;
+        g_app.backend.set_internal_scale(kScaleSteps[g_app.scale_idx]);
+    }
+}
 
 // Build CameraState from (distance, azimuth, elevation). Identical
 // convention to app_shell.cpp's compute_basis — row 0 = right,
@@ -95,6 +162,18 @@ void tick() {
         g_app.t_seconds += 1.0f / 60.0f;
         g_app.orbit.azimuth_rad = 0.2f * g_app.t_seconds;
     }
+
+#ifdef __EMSCRIPTEN__
+    const double now_ms = emscripten_get_now();
+#else
+    const double now_ms = 0.0;
+#endif
+    // Draft integration while the pointer is actively steering (drag, or
+    // within 300 ms of a wheel event); the panel's preset otherwise.
+    const bool interacting = g_app.dragging || (now_ms - g_app.last_wheel_ms) < 300.0;
+    apply_integration_quality(interacting);
+    update_resolution_controller(now_ms);
+
     write_camera_from_orbit();
     g_app.backend.render_frame(g_app.scene, g_app.camera);
 }
@@ -136,6 +215,7 @@ EM_BOOL on_mouse_move(int /*event_type*/, const EmscriptenMouseEvent* e, void* /
 
 EM_BOOL on_wheel(int /*event_type*/, const EmscriptenWheelEvent* e, void* /*ud*/) {
     g_app.auto_orbit = false;
+    g_app.last_wheel_ms = emscripten_get_now();
     // deltaY positive on scroll-down → zoom out. exp() keeps motion
     // proportional across different input devices (mouse wheel vs
     // trackpad pinch).
@@ -180,6 +260,7 @@ int main(int /*argc*/, char** /*argv*/) {
     g_app.scene.bloom_threshold = 0.8f;
     g_app.scene.disc_turbulence = 0.5f;
     g_app.scene.disc_peak_T_K = 18000.0f;
+    g_app.scene.adaptive_step_on = true;
 
 #ifdef __EMSCRIPTEN__
     register_input_callbacks();
@@ -251,9 +332,69 @@ SINGULARITY_EXPORT void singularity_reset() {
     g_app.scene.bloom_threshold = 0.8f;
     g_app.scene.disc_turbulence = 0.5f;
     g_app.scene.disc_peak_T_K = 18000.0f;
+    g_app.scene.adaptive_step_on = true;
     g_app.orbit = OrbitalCamera{};
     g_app.auto_orbit = true;
     g_app.t_seconds = 0.0f;
+    g_app.quality = 1;
+    g_app.resolution_mode = 0;
+}
+
+// --- Performance controls ---------------------------------------------------
+
+SINGULARITY_EXPORT void singularity_set_quality(int q) {
+    g_app.quality = q;
+}
+SINGULARITY_EXPORT void singularity_set_resolution_mode(int m) {
+    g_app.resolution_mode = m;
+}
+SINGULARITY_EXPORT void singularity_set_adaptive(int v) {
+    g_app.scene.adaptive_step_on = (v != 0);
+}
+SINGULARITY_EXPORT float singularity_get_fps() {
+    return (g_app.ema_ms > 0.1) ? float(1000.0 / g_app.ema_ms) : 0.0f;
+}
+SINGULARITY_EXPORT float singularity_get_scale_pct() {
+    return 100.0f * kScaleSteps[g_app.scale_idx];
+}
+
+// --- Annotation-overlay geometry --------------------------------------------
+// The camera always looks at the origin, so the shadow is centred on the
+// canvas. Its apparent radius follows from the critical impact parameter
+// b_crit = √27 M (Schwarzschild; the Kerr shadow is asymmetric but the
+// same scale): screen_px = tan(asin(b_crit / d)) / tan(fov/2) · H/2.
+SINGULARITY_EXPORT float singularity_get_shadow_px_radius(float canvas_h) {
+    const float M = 1.0f;
+    const float b_crit = 5.196152f * M;  // √27
+    const float d = g_app.orbit.distance_M;
+    if (d <= b_crit)
+        return 0.0f;
+    const float alpha = std::asin(b_crit / d);
+    const float tan_half_fov = std::tan(0.5f * g_app.orbit.fov_y_deg * (kPi / 180.0f));
+    return std::tan(alpha) / tan_half_fov * 0.5f * canvas_h;
+}
+
+// Which side of the screen the disc's *approaching* (Doppler-brightened)
+// material is on: -1 = left, +1 = right. The disc orbits prograde about
+// +z; material at screen-right (along the camera's right basis vector,
+// distance r) has velocity ω ẑ×p — approaching if that velocity points
+// toward the camera.
+SINGULARITY_EXPORT int singularity_get_doppler_side() {
+    const float* b = g_app.camera.basis;    // rows: right, up, -forward
+    const float* cp = g_app.camera.position;
+    const float r0 = 10.0f;  // representative disc radius; sign is r-independent
+    const float px = b[0] * r0;
+    const float py = b[1] * r0;
+    const float pz = b[2] * r0;
+    // v ∝ ẑ × p = (-p_y, p_x, 0)
+    const float vx = -py;
+    const float vy = px;
+    const float to_cam_x = cp[0] - px;
+    const float to_cam_y = cp[1] - py;
+    const float to_cam_z = cp[2] - pz;
+    (void)to_cam_z;
+    const float approach = vx * to_cam_x + vy * to_cam_y;
+    return (approach > 0.0f) ? 1 : -1;
 }
 
 }  // extern "C"

@@ -47,6 +47,14 @@ public:
 
     void set_overlay(OverlayCallback cb);
 
+    // Internal render scale — the geodesic/HDR/bloom chain renders at
+    // scale × canvas resolution and the blit's linear sampler upscales to
+    // the (unchanged) surface. Clamped to [0.25, 1.0]; quantize on the
+    // caller side, since every change re-creates the HDR + bloom textures.
+    // No-op until the async device is ready.
+    void set_internal_scale(float scale);
+    float internal_scale() const;
+
     // Opaque handles for ImGui-WebGPU bring-up. All return WGPUFoo as void*;
     // the app casts back. These mirror vk_instance_handle / vk_device_handle
     // / vk_graphics_queue_handle from the Vulkan backend.

@@ -56,6 +56,7 @@ const SING_FLAG_DOPPLER_ON: u32 = 1u;
 const SING_FLAG_REDSHIFT_ON: u32 = 2u;
 const SING_FLAG_DISC_ON: u32 = 4u;
 const SING_FLAG_STARFIELD_ON: u32 = 8u;
+const SING_FLAG_ADAPTIVE_STEP: u32 = 16u;
 
 const SING_METRIC_SCHWARZSCHILD: u32 = 0u;
 const SING_METRIC_KERR: u32 = 1u;
@@ -102,6 +103,22 @@ fn geodesic_rhs_schwarzschild(s: State, rs_val: f32) -> State {
     d.utheta = -2.0 * s.ur * s.utheta / s.r + sin_t * cos_t * s.uphi * s.uphi;
     d.uphi = -2.0 * s.ur * s.uphi / s.r - 2.0 * (cos_t / sin_t) * s.utheta * s.uphi;
     return d;
+}
+
+// Radius-adaptive step size — hand-port of adaptive_h in
+// shared_shader/geodesic_math.h (keep in sync). Curvature falls off like
+// M/r³, so the affine step can grow linearly with r without measurable
+// error: h(r) = h_base · clamp(r / 6M, 1, 40). Validated on the host build
+// by tests/test_adaptive_step.cpp. Gated by SING_FLAG_ADAPTIVE_STEP.
+fn adaptive_h(h_base: f32, r: f32, mass_M: f32) -> f32 {
+    return h_base * clamp(r / (6.0 * mass_M), 1.0, 40.0);
+}
+
+fn step_h(r: f32) -> f32 {
+    if ((u.flags & SING_FLAG_ADAPTIVE_STEP) != 0u) {
+        return adaptive_h(u.h_step, r, u.mass_M);
+    }
+    return u.h_step;
 }
 
 fn rk4_step(y: State, h: f32, rs_val: f32) -> State {
@@ -463,7 +480,7 @@ fn trace_schwarzschild(cam: CameraRay) -> vec3f {
         prev_theta = s.theta;
         prev_r = s.r;
         prev_uphi = s.uphi;
-        s = rk4_step(s, u.h_step, u.rs);
+        s = rk4_step(s, step_h(s.r), u.rs);
     }
     return vec3f(0.0);
 }
@@ -568,7 +585,7 @@ fn trace_kerr(cam: CameraRay) -> vec3f {
         }
         prev_theta = s.theta;
         prev_r = s.r;
-        s = kerr_ham_rk4_step(s, u.h_step, c);
+        s = kerr_ham_rk4_step(s, step_h(s.r), c);
     }
     return vec3f(0.0);
 }
