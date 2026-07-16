@@ -77,8 +77,7 @@ int integrate_to(State& s, float rs, float h_base, float r_out, bool adaptive, i
 
 }  // namespace
 
-TEST_CASE("Adaptive stepping preserves the deflection angle within 0.5%",
-          "[physics][adaptive]") {
+TEST_CASE("Adaptive stepping preserves the deflection angle within 0.5%", "[physics][adaptive]") {
     constexpr float M = 1.0f;
     constexpr float rs = 2.0f * M;
     // Periapsis at 8M — close enough for strong-field bending (weak-field

@@ -131,9 +131,9 @@ void pack_uniforms(Uniforms& out,
     // integrating out to a fixed 200M is wasted budget when the camera sits
     // at 30M. Web-only behaviour — the desktop backends keep their fixed
     // 200M and their goldens.
-    const float cam_r = std::sqrt(cam.position[0] * cam.position[0]
-                                  + cam.position[1] * cam.position[1]
-                                  + cam.position[2] * cam.position[2]);
+    const float cam_r =
+        std::sqrt(cam.position[0] * cam.position[0] + cam.position[1] * cam.position[1]
+                  + cam.position[2] * cam.position[2]);
     out.escape_r = std::min(200.0f, std::max(60.0f, 2.0f * cam_r));
     // Kerr sets its own tighter horizon cut in-kernel; this covers the
     // Schwarzschild path.

@@ -49,12 +49,12 @@ struct WebApp {
     bool auto_orbit = true;
 
     // --- Performance state -------------------------------------------------
-    int quality = 1;          // 0 Draft / 1 Balanced / 2 Quality (panel)
-    int resolution_mode = 0;  // 0 Auto / 1 100% / 2 75% / 3 50%
+    int quality = 1;                  // 0 Draft / 1 Balanced / 2 Quality (panel)
+    int resolution_mode = 0;          // 0 Auto / 1 100% / 2 75% / 3 50%
     int scale_idx = kScaleCount - 1;  // current rung on kScaleSteps
     double ema_ms = 16.7;             // frame-time EMA (ms)
     double last_now_ms = 0.0;
-    int ctrl_cooldown = 0;      // frames until the controller may act again
+    int ctrl_cooldown = 0;  // frames until the controller may act again
     double last_wheel_ms = -1.0e9;
 };
 
@@ -93,7 +93,7 @@ void update_resolution_controller(double now_ms) {
     int target_idx = g_app.scale_idx;
     if (g_app.resolution_mode != 0) {
         // Fixed modes: 100% / 75% / 50% map onto the nearest ladder rungs.
-        target_idx = (g_app.resolution_mode == 1) ? kScaleCount - 1
+        target_idx = (g_app.resolution_mode == 1)   ? kScaleCount - 1
                      : (g_app.resolution_mode == 2) ? 3
                                                     : 1;
     } else if (g_app.ctrl_cooldown > 0) {
@@ -208,8 +208,7 @@ EM_BOOL on_mouse_move(int /*event_type*/, const EmscriptenMouseEvent* e, void* /
     g_app.orbit.azimuth_rad = static_cast<float>(g_app.drag_anchor_az - (dx * kDragSens));
     const double elev_proposal = g_app.drag_anchor_el + (dy * kDragSens);
     const double lim = 0.49 * kPi;
-    g_app.orbit.elevation_rad =
-        static_cast<float>(std::max(-lim, std::min(lim, elev_proposal)));
+    g_app.orbit.elevation_rad = static_cast<float>(std::max(-lim, std::min(lim, elev_proposal)));
     return EM_TRUE;
 }
 
@@ -380,7 +379,7 @@ SINGULARITY_EXPORT float singularity_get_shadow_px_radius(float canvas_h) {
 // distance r) has velocity ω ẑ×p — approaching if that velocity points
 // toward the camera.
 SINGULARITY_EXPORT int singularity_get_doppler_side() {
-    const float* b = g_app.camera.basis;    // rows: right, up, -forward
+    const float* b = g_app.camera.basis;  // rows: right, up, -forward
     const float* cp = g_app.camera.position;
     const float r0 = 10.0f;  // representative disc radius; sign is r-independent
     const float px = b[0] * r0;
