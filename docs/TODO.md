@@ -682,7 +682,7 @@ Pick a subset that interests you. Each is self-contained.
 - [ ] Desktop backends adopt `SING_FLAG_ADAPTIVE_STEP` (needs a re-golden of the Vulkan/CUDA reference images).
 - [ ] Spectroscopy overlay (hover a disc pixel → local spectrum with Doppler/redshift contributions separated).
 - [ ] FSR-style spatial upscale pass if linear-blit upscale proves too soft at 50%.
-- [ ] Kerr polar-axis seam: a dotted vertical line renders below the shadow (θ→π pole; `safe_s2` clamp + finite-difference dH/dθ). Pre-existing on `main` (confirmed by A/B with the adaptive flag off); worth a proper fix in the Hamiltonian RHS.
+- [x] Kerr polar-axis seam: dotted vertical line below the shadow, pre-existing on `main`. Root cause was twofold: (1) the centred finite difference of 2H cancels the L_z²/sin²θ centrifugal barrier into noise across θ = 0/π — replaced with analytic partials (SymPy-verified, `verification/test_kerr_ham_analytic.py` + Catch2 FD-parity tests); (2) the barrier is stiff, so `kerr_ham_rk4_step` now damps the step with sin θ near the axis (full step beyond ~11°, 1/20 at the pole). Affects all backends via the shared header; Vulkan goldens + backend equivalence re-verified locally (501 pytest passed). Seam confirmed gone in the web render.
 
 ---
 

@@ -158,28 +158,13 @@ fn kerr_ham_state_scale(s: KerrHamState, k: f32) -> KerrHamState {
                         s.p_r * k, s.p_theta * k);
 }
 
-fn kerr_ham_two_H(r: f32, theta: f32, p_r: f32, p_theta: f32, c: KerrConserved) -> f32 {
-    let st = sin(theta);
-    let s2 = st * st;
-    var safe_s2 = s2;
-    if (s2 < 1e-10) { safe_s2 = 1e-10; }
-    let ct = cos(theta);
-    let c2 = ct * ct;
-    let r2 = r * r;
-    let a2 = c.a * c.a;
-    let Sigma = r2 + a2 * c2;
-    let Delta = r2 - 2.0 * c.M * r + a2;
-    let A = (r2 + a2) * (r2 + a2) - a2 * Delta * s2;
-    let SD = Sigma * Delta;
-
-    let t_tt = -A * c.E * c.E / SD;
-    let t_tp = 4.0 * c.M * r * c.a * c.E * c.L_z / SD;
-    let t_pp = (Delta - a2 * safe_s2) * c.L_z * c.L_z / (SD * safe_s2);
-    let t_rr = Delta * p_r * p_r / Sigma;
-    let t_th = p_theta * p_theta / Sigma;
-    return t_tt + t_tp + t_pp + t_rr + t_th;
-}
-
+// Hand-port of kerr_ham_rhs in shared_shader/kerr_hamilton.h (keep in sync).
+// Momentum derivatives are analytic partials of 2H grouped as
+//   2H = B/(ΣΔ) + L_z²/(Σ sin²θ) + (Δ p_r² + p_θ²)/Σ,
+//   B  = −A E² + 4 M r a E L_z − a² L_z².
+// SymPy-verified in verification/test_kerr_ham_analytic.py. The earlier
+// centred finite difference of 2H cancelled the polar centrifugal barrier
+// into noise near θ = 0/π (the dotted axis seam below the shadow).
 fn kerr_ham_rhs(s: KerrHamState, c: KerrConserved) -> KerrHamState {
     let r = s.r;
     let theta = s.theta;
@@ -202,19 +187,37 @@ fn kerr_ham_rhs(s: KerrHamState, c: KerrConserved) -> KerrHamState {
     d.r = Delta * s.p_r / Sigma;
     d.theta = s.p_theta / Sigma;
 
-    let h_diff = 1.0e-3;
-    let dH_dr = (kerr_ham_two_H(r + h_diff, theta, s.p_r, s.p_theta, c)
-                 - kerr_ham_two_H(r - h_diff, theta, s.p_r, s.p_theta, c))
-                * (0.5 / h_diff);
-    let dH_dtheta = (kerr_ham_two_H(r, theta + h_diff, s.p_r, s.p_theta, c)
-                     - kerr_ham_two_H(r, theta - h_diff, s.p_r, s.p_theta, c))
-                    * (0.5 / h_diff);
+    let E = c.E;
+    let L = c.L_z;
+    let L2 = L * L;
+    let B = -A * E * E + 4.0 * c.M * r * c.a * E * L - a2 * L2;
+    let Sig_r = 2.0 * r;
+    let Del_r = 2.0 * r - 2.0 * c.M;
+    let A_r = 4.0 * r * (r2 + a2) - a2 * Del_r * s2;
+    let B_r = -A_r * E * E + 4.0 * c.M * c.a * E * L;
+    let sin2t = 2.0 * st * ct;
+    let Sig_t = -a2 * sin2t;
+    let B_t = a2 * Delta * sin2t * E * E;
+    let Sigma2 = Sigma * Sigma;
+    let Dp2 = Delta * s.p_r * s.p_r + s.p_theta * s.p_theta;
+
+    let dH_dr = B_r / SD - B * (Sig_r * Delta + Sigma * Del_r) / (SD * SD)
+                - L2 * Sig_r / (Sigma2 * safe_s2) + Del_r * s.p_r * s.p_r / Sigma
+                - Dp2 * Sig_r / Sigma2;
+    let dH_dtheta = B_t / SD - B * Sig_t / (Sigma2 * Delta)
+                    - L2 * (Sig_t * safe_s2 + Sigma * sin2t) / (Sigma2 * safe_s2 * safe_s2)
+                    - Dp2 * Sig_t / Sigma2;
     d.p_r = -0.5 * dH_dr;
     d.p_theta = -0.5 * dH_dtheta;
     return d;
 }
 
-fn kerr_ham_rk4_step(y: KerrHamState, h: f32, c: KerrConserved) -> KerrHamState {
+// Near-pole step damping mirrors kerr_ham_rk4_step in kerr_hamilton.h
+// (keep in sync): the L_z²/sin²θ barrier is stiff near the axis, so the
+// step shrinks smoothly with sin θ (full beyond ~11°, 1/20 at the pole).
+fn kerr_ham_rk4_step(y: KerrHamState, h_in: f32, c: KerrConserved) -> KerrHamState {
+    let pole_scale = clamp(abs(sin(y.theta)) * 5.0, 0.05, 1.0);
+    let h = h_in * pole_scale;
     let k1 = kerr_ham_rhs(y, c);
     let k2 = kerr_ham_rhs(kerr_ham_state_add(y, kerr_ham_state_scale(k1, 0.5 * h)), c);
     let k3 = kerr_ham_rhs(kerr_ham_state_add(y, kerr_ham_state_scale(k2, 0.5 * h)), c);
