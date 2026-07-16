@@ -126,15 +126,19 @@ void pack_uniforms(Uniforms& out,
     out.aspect = (h == 0) ? 1.0f : float(w) / float(h);
 
     out.h_step = scene.h_step > 0.0f ? scene.h_step : 0.12f;
-    // Dynamic escape radius: residual deflection beyond ~2× the camera
-    // radius shifts the sampled sky direction by well under a degree, so
-    // integrating out to a fixed 200M is wasted budget when the camera sits
-    // at 30M. Web-only behaviour — the desktop backends keep their fixed
-    // 200M and their goldens.
+    // Dynamic escape radius. Fixed 200M wastes budget when the camera sits
+    // at 30M; residual deflection past 3× the camera radius shifts the
+    // sampled sky by ~a pixel at 60° FOV. Two hard constraints, learned the
+    // review's way: it must exceed the camera radius (the kernel's escape
+    // check fires before anything else, so escape_r < cam_r blanks the whole
+    // frame — the zoom clamp allows 400M), and it must clear the disc's
+    // outer edge (the escape check also runs before crossing detection).
+    // Web-only behaviour — desktop backends keep fixed 200M and their
+    // goldens.
     const float cam_r =
         std::sqrt(cam.position[0] * cam.position[0] + cam.position[1] * cam.position[1]
                   + cam.position[2] * cam.position[2]);
-    out.escape_r = std::min(200.0f, std::max(60.0f, 2.0f * cam_r));
+    out.escape_r = std::max(std::max(3.0f * cam_r, 1.5f * scene.disc_outer_M), 60.0f);
     // Kerr sets its own tighter horizon cut in-kernel; this covers the
     // Schwarzschild path.
     out.horizon_cut = 1.02f * out.rs;

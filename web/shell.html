@@ -310,13 +310,15 @@
         var canvas    = document.getElementById("canvas");
 
         function placeAnnotations() {
-          if (annotBox.hidden) return;
+          // Driven by the checkbox, never by our own hidden flag — setting
+          // annotBox.hidden here would latch the overlay off permanently
+          // (the zoom clamp can push the shadow radius to 0 or huge).
+          if (!document.getElementById("ui-annot").checked) return;
           var W = canvas.clientWidth, H = canvas.clientHeight;
           var cx = W / 2, cy = H / 2;
-          var r = 40;
+          var r = 0;
           try { r = Module.ccall("singularity_get_shadow_px_radius", "number", ["number"], [H]); }
           catch (e) { return; }
-          if (!(r > 4)) { annotBox.hidden = true; return; }
           var side = 1;
           try { side = Module.ccall("singularity_get_doppler_side", "number", [], []); } catch (e) {}
 
@@ -325,13 +327,15 @@
             el.style.left = Math.max(60, Math.min(W - 60, x)) + "px";
             el.style.top  = Math.max(12, Math.min(H - 12, y)) + "px";
           };
+          var tiny      = !(r > 4);        // shadow sub-label-size: hide all
+          var huge      = r > 0.6 * H;     // shadow beyond the frame: shadow label only
           var discOn    = document.getElementById("ui-disc-on").checked;
           var dopplerOn = document.getElementById("ui-doppler").checked && discOn;
 
-          place(anShadow,  cx,                              cy,               true);
-          place(anRing,    cx + 0.78 * r * 1.25,            cy - 0.78 * r * 1.25, r > 24);
-          place(anDoppler, cx + side * Math.min(3.2 * r, 0.38 * W), cy + 0.35 * r, dopplerOn);
-          place(anFold,    cx,                              cy - 1.55 * r,    discOn);
+          place(anShadow,  cx,                              cy,               !tiny);
+          place(anRing,    cx + 0.78 * r * 1.25,            cy - 0.78 * r * 1.25, !tiny && !huge && r > 24);
+          place(anDoppler, cx + side * Math.min(3.2 * r, 0.38 * W), cy + 0.35 * r, !tiny && !huge && dopplerOn);
+          place(anFold,    cx,                              cy - 1.55 * r,    !tiny && !huge && discOn);
         }
         setInterval(placeAnnotations, 300);
 

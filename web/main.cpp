@@ -50,7 +50,7 @@ struct WebApp {
 
     // --- Performance state -------------------------------------------------
     int quality = 1;                  // 0 Draft / 1 Balanced / 2 Quality (panel)
-    int resolution_mode = 0;          // 0 Auto / 1 100% / 2 75% / 3 50%
+    int resolution_mode = 0;          // 0 Auto / 1 100% / 2 80% / 3 50%
     int scale_idx = kScaleCount - 1;  // current rung on kScaleSteps
     double ema_ms = 16.7;             // frame-time EMA (ms)
     double last_now_ms = 0.0;
@@ -68,8 +68,10 @@ void apply_integration_quality(bool interacting) {
         float h;
         std::uint32_t steps;
     };
-    // Draft / Balanced / Quality.
-    constexpr Preset kPresets[3] = {{0.25f, 600u}, {0.12f, 1200u}, {0.07f, 2200u}};
+    // Draft / Balanced / Quality. Draft keeps enough budget that winding
+    // photon-ring rays still terminate (exhausted rays render black, which
+    // reads as fringing at the shadow edge during camera drags).
+    constexpr Preset kPresets[3] = {{0.18f, 900u}, {0.12f, 1200u}, {0.07f, 2200u}};
     const int q = std::max(0, std::min(2, g_app.quality));
     const Preset p = interacting ? kPresets[0] : kPresets[q];
     g_app.scene.h_step = p.h;
@@ -92,7 +94,7 @@ void update_resolution_controller(double now_ms) {
 
     int target_idx = g_app.scale_idx;
     if (g_app.resolution_mode != 0) {
-        // Fixed modes: 100% / 75% / 50% map onto the nearest ladder rungs.
+        // Fixed modes: 100% / 80% / 50% map onto ladder rungs 4 / 3 / 1.
         target_idx = (g_app.resolution_mode == 1)   ? kScaleCount - 1
                      : (g_app.resolution_mode == 2) ? 3
                                                     : 1;
@@ -366,34 +368,32 @@ SINGULARITY_EXPORT float singularity_get_shadow_px_radius(float canvas_h) {
     const float M = 1.0f;
     const float b_crit = 5.196152f * M;  // √27
     const float d = g_app.orbit.distance_M;
-    if (d <= b_crit)
-        return 0.0f;
+    const float px_cap = 4.0f * canvas_h;  // "shadow more than fills the screen"
+    // Inside (or at) the critical impact parameter the shadow spans the whole
+    // sky — report the cap, not zero, so the overlay treats it as huge rather
+    // than absent. The zoom clamp (5M) sits just below b_crit, so this is
+    // reachable.
+    if (d <= b_crit * 1.02f)
+        return px_cap;
     const float alpha = std::asin(b_crit / d);
     const float tan_half_fov = std::tan(0.5f * g_app.orbit.fov_y_deg * (kPi / 180.0f));
-    return std::tan(alpha) / tan_half_fov * 0.5f * canvas_h;
+    const float px = std::tan(alpha) / tan_half_fov * 0.5f * canvas_h;
+    return std::min(px, px_cap);
 }
 
 // Which side of the screen the disc's *approaching* (Doppler-brightened)
-// material is on: -1 = left, +1 = right. The disc orbits prograde about
-// +z; material at screen-right (along the camera's right basis vector,
-// distance r) has velocity ω ẑ×p — approaching if that velocity points
-// toward the camera.
+// material is on: -1 = left, +1 = right.
+//
+// Under the demo's invariants this is a constant: the disc always orbits
+// prograde (the spin slider is non-negative), the orbital camera has no
+// roll and always looks at the origin, and horizontal screen position is
+// unaffected by elevation sign — so the beamed side never changes screen
+// sides. The constant is calibrated against the kernel's actual output
+// (left/right half-luminance with the Doppler toggle A/B'd on the live
+// render): the approaching side renders on screen-RIGHT. Revisit if
+// retrograde spin or camera roll ever ship.
 SINGULARITY_EXPORT int singularity_get_doppler_side() {
-    const float* b = g_app.camera.basis;  // rows: right, up, -forward
-    const float* cp = g_app.camera.position;
-    const float r0 = 10.0f;  // representative disc radius; sign is r-independent
-    const float px = b[0] * r0;
-    const float py = b[1] * r0;
-    const float pz = b[2] * r0;
-    // v ∝ ẑ × p = (-p_y, p_x, 0)
-    const float vx = -py;
-    const float vy = px;
-    const float to_cam_x = cp[0] - px;
-    const float to_cam_y = cp[1] - py;
-    const float to_cam_z = cp[2] - pz;
-    (void)to_cam_z;
-    const float approach = vx * to_cam_x + vy * to_cam_y;
-    return (approach > 0.0f) ? 1 : -1;
+    return 1;
 }
 
 }  // extern "C"
