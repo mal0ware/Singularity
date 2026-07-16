@@ -74,6 +74,11 @@ struct Scene {
     // visible noise for live framerate without re-writing pack_uniforms.
     std::uint32_t max_steps{0};
     float h_step{0.0f};
+
+    // Radius-adaptive integrator step (SING_FLAG_ADAPTIVE_STEP; see
+    // shared_shader/geodesic_math.h adaptive_h). Default off so the desktop
+    // golden images stay byte-stable; the web demo enables it.
+    bool adaptive_step_on{false};
 };
 
 struct CameraState {

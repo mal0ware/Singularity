@@ -42,6 +42,10 @@ typedef std::uint32_t sing_uint;
 #define SING_FLAG_REDSHIFT_ON (1u << 1)
 #define SING_FLAG_DISC_ON (1u << 2)
 #define SING_FLAG_STARFIELD_ON (1u << 3)
+// Radius-adaptive integrator step (see adaptive_h in geodesic_math.h).
+// Off by default on the desktop backends so their golden images stay
+// byte-stable; the web backend turns it on for interactive framerates.
+#define SING_FLAG_ADAPTIVE_STEP (1u << 4)
 
 // Metric selector packed into Uniforms::metric_type.
 #define SING_METRIC_SCHWARZSCHILD 0u
