@@ -657,23 +657,23 @@ Pick a subset that interests you. Each is self-contained.
 
 ### Performance
 
-- [ ] `adaptive_h(h_base, r, M)` in `shared_shader/geodesic_math.h` + `SING_FLAG_ADAPTIVE_STEP` in `uniforms.h`; host-validated by `tests/test_adaptive_step.cpp` (deflection parity 0.5%, E/L conservation, ≥5× step reduction — measured 8.3×).
-- [ ] WGSL hand-port of `adaptive_h` + `step_h()` wired into both trace loops in `geodesic_kernel.wgsl`.
-- [ ] Dynamic escape radius in the web backend: `escape_r = clamp(2·cam_r, 60M, 200M)`.
-- [ ] Internal render scale: `WebGPUBackend::set_internal_scale()`, HDR/bloom chain at scale × canvas, linear-filtering blit upscale (BGL sampleType Float + Filtering sampler).
-- [ ] Dynamic-resolution controller in `web/main.cpp`: frame-time EMA walks {0.4, 0.5, 0.65, 0.8, 1.0} targeting 60 FPS with hysteresis + cooldown.
-- [ ] Interaction draft mode: h 0.25 / 600 steps while dragging or within 300 ms of a wheel event.
-- [ ] Panel Performance section: quality preset, resolution mode, adaptive toggle, live FPS + scale readout.
+- [x] (`a73fa8c`) `adaptive_h(h_base, r, M)` in `shared_shader/geodesic_math.h` + `SING_FLAG_ADAPTIVE_STEP` in `uniforms.h`; host-validated by `tests/test_adaptive_step.cpp` (deflection parity 0.5%, E/L conservation, ≥5× step reduction — measured 8.3×).
+- [x] (`c176aec`) WGSL hand-port of `adaptive_h` + `step_h()` wired into both trace loops in `geodesic_kernel.wgsl`.
+- [x] (`c176aec`) Dynamic escape radius in the web backend: `escape_r = clamp(2·cam_r, 60M, 200M)`.
+- [x] (`c176aec`) Internal render scale: `WebGPUBackend::set_internal_scale()`, HDR/bloom chain at scale × canvas, linear-filtering blit upscale (BGL sampleType Float + Filtering sampler).
+- [x] (`c176aec`) Dynamic-resolution controller in `web/main.cpp`: frame-time EMA walks {0.4, 0.5, 0.65, 0.8, 1.0} targeting 60 FPS with hysteresis + cooldown.
+- [x] (`c176aec`) Interaction draft mode: h 0.25 / 600 steps while dragging or within 300 ms of a wheel event.
+- [x] (`4ac3d9b`) Panel Performance section: quality preset, resolution mode, adaptive toggle, live FPS + scale readout.
 
 ### Educational overlay
 
-- [ ] Seven "Learn" cards in the DOM panel (shadow, photon ring, disc fold, Doppler, redshift, colors, how it's computed) distilled from PHYSICS.md.
-- [ ] Annotation overlay: shadow / photon ring / Doppler-side / lensed-far-side labels positioned from live camera state (`singularity_get_shadow_px_radius`, `singularity_get_doppler_side`).
+- [x] (`4ac3d9b`) Seven "Learn" cards in the DOM panel (shadow, photon ring, disc fold, Doppler, redshift, colors, how it's computed) distilled from PHYSICS.md.
+- [x] (`4ac3d9b`) Annotation overlay: shadow / photon ring / Doppler-side / lensed-far-side labels positioned from live camera state (`singularity_get_shadow_px_radius`, `singularity_get_doppler_side`).
 
 ### Validation & ship
 
-- [ ] Local emsdk build of the wasm bundle; manual smoke in a WebGPU browser.
-- [ ] Full Catch2 + pytest suites green (desktop goldens byte-stable).
+- [x] Local emsdk build of the wasm bundle; headless-Chrome smoke on the RTX 3080 (166 vs 59 FPS adaptive on/off; no WebGPU validation errors; all exports live).
+- [x] Full Catch2 + pytest suites green: 77 C++ cases, 65 pytest passed / 10 environment skips.
 - [ ] CI `build-web` green on the branch; merge; Pages deploy picks it up.
 
 ### Follow-ups (not this branch)
