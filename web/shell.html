@@ -51,6 +51,28 @@
     #panel .toggle { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
     #panel .toggle input { accent-color: #ffb86c; }
     #panel .hint { color: #707070; font-size: 11px; margin-top: 10px; }
+    #panel .readout { color: #9a9a9a; font-size: 11px; margin-top: 6px;
+                      font-variant-numeric: tabular-nums; }
+
+    /* Learn cards */
+    #panel details { margin: 6px 0; border: 1px solid #262626; border-radius: 4px;
+                     background: rgba(20, 20, 20, 0.6); }
+    #panel details summary { cursor: pointer; padding: 5px 8px; color: #d8d8d8;
+                             font-size: 12px; list-style-position: inside; }
+    #panel details summary:hover { color: #ffb86c; }
+    #panel details p { margin: 0; padding: 2px 9px 8px; color: #a8a8a8;
+                       font-size: 11px; line-height: 1.45; }
+    #panel details p + p { padding-top: 0; }
+    #panel details i { color: #c8b89a; font-style: normal; }
+
+    /* Annotation overlay */
+    #annotations { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+    #annotations[hidden] { display: none; }
+    .annot { position: absolute; transform: translate(-50%, -50%);
+             padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+             font-size: 11px; color: #f0e8d8;
+             background: rgba(10, 10, 10, 0.55); border: 1px solid rgba(255, 184, 108, 0.35);
+             text-shadow: 0 1px 2px #000; }
 
     #fallback { display: none; max-width: 48rem; margin: 3rem auto;
                 padding: 2rem; border: 1px solid #444; background: #111; }
@@ -100,8 +122,100 @@
       <label>FOV (deg) <span class="v" id="v-fov">60</span></label>
       <input type="range" id="ui-fov" min="20" max="120" step="1" value="60">
 
+      <h3>Performance</h3>
+      <label>Quality</label>
+      <select id="ui-quality">
+        <option value="0">Draft (fastest)</option>
+        <option value="1" selected>Balanced</option>
+        <option value="2">Quality (sharpest ring)</option>
+      </select>
+      <label>Resolution</label>
+      <select id="ui-res">
+        <option value="0" selected>Auto (targets 60 FPS)</option>
+        <option value="1">100%</option>
+        <option value="2">80%</option>
+        <option value="3">50%</option>
+      </select>
+      <div class="toggle"><input type="checkbox" id="ui-adaptive" checked><label for="ui-adaptive">Adaptive integrator</label></div>
+      <div class="readout" id="ui-fps">measuring…</div>
+
+      <h3>Learn</h3>
+      <div class="toggle"><input type="checkbox" id="ui-annot"><label for="ui-annot">Label what I'm seeing</label></div>
+
+      <details>
+        <summary>The black disc (the shadow)</summary>
+        <p>Not the event horizon itself. It's the <i>shadow</i>: every viewing
+        direction from which a light ray, traced backwards from your eye,
+        falls into the hole. Gravity bends nearby rays inward, so the hole
+        captures light that would otherwise miss it, and the shadow appears
+        ~2.6× wider than the horizon (radius √27 GM/c²).</p>
+      </details>
+      <details>
+        <summary>The bright thin ring</summary>
+        <p>The <i>photon ring</i>. At 1.5 Schwarzschild radii light can orbit
+        the hole. Rays that graze that orbit wind around once, twice, many
+        times before escaping; each loop stacks another, thinner image of
+        the disc and sky against the shadow's edge. The Event Horizon
+        Telescope images of M87* show this same feature.</p>
+      </details>
+      <details>
+        <summary>Why the disc arcs over the hole</summary>
+        <p>The disc is genuinely flat, a thin ring in the equatorial plane.
+        But light from the part <i>behind</i> the hole can't reach you in a
+        straight line; it's lensed up and over (and under) the hole instead.
+        You're seeing the far side's top surface above the shadow and its
+        underside below, both at once. This is the signature look of
+        <i>Interstellar</i>'s Gargantua.</p>
+      </details>
+      <details>
+        <summary>Why one side is brighter</summary>
+        <p><i>Doppler beaming.</i> Inner-disc material orbits at a large
+        fraction of light speed. Emission is boosted along its direction of
+        motion (intensity scales as the 4th power of the shift factor g), so
+        the side racing toward you glows brighter and bluer while the
+        receding side is dimmed and reddened. The <i>Interstellar</i> VFX
+        team deliberately suppressed this asymmetry; toggle it off to see
+        their version.</p>
+      </details>
+      <details>
+        <summary>Gravitational redshift</summary>
+        <p>Light loses energy climbing out of the hole's gravity well: a
+        photon emitted at radius r arrives shifted by √(1 − r<sub>s</sub>/r).
+        The innermost disc, the hottest part, is also the most redshifted,
+        so its glow arrives dimmer and redder than its temperature alone
+        would suggest.</p>
+      </details>
+      <details>
+        <summary>What the colors mean</summary>
+        <p>Each patch of disc radiates like a blackbody. The thin-disc model
+        (Novikov–Thorne) sets temperature falling outward roughly as
+        r<sup>−3/4</sup>: white-hot at the inner edge, cooling to orange
+        further out. Doppler and gravitational shifts then multiply that
+        temperature by g, nudging the color blue or red.</p>
+      </details>
+      <details>
+        <summary>How this is computed</summary>
+        <p>No lensing textures, no tricks: every pixel fires a light ray
+        <i>backwards</i> from the camera and numerically integrates the
+        geodesic equation through the exact Schwarzschild or Kerr spacetime
+        (4th-order Runge–Kutta) until the ray hits the horizon, crosses the
+        disc, or escapes to the sky.</p>
+        <p>The <i>adaptive integrator</i> takes fine steps in the strongly
+        curved region near the hole and up to 40× coarser ones out in
+        nearly-flat space (about 8× faster, no visible difference).
+        Draft/Balanced/Quality trade step size against the crispness of the
+        photon ring's finest sub-rings.</p>
+      </details>
+
       <button id="ui-reset" style="margin-top: 12px">Reset to defaults</button>
       <div class="hint">click on the canvas to take camera control</div>
+    </div>
+
+    <div id="annotations" hidden>
+      <div class="annot" id="an-shadow">the shadow: light that fell in</div>
+      <div class="annot" id="an-ring">photon ring: light orbiting the hole</div>
+      <div class="annot" id="an-doppler">brighter: this side races toward you</div>
+      <div class="annot" id="an-fold">the far side of the disc, lensed over the top</div>
     </div>
   </div>
 
@@ -170,6 +284,61 @@
         bindRange ("ui-bt",       "v-bt",       function (v) { call("singularity_set_bloom_threshold", "number", v); });
         bindRange ("ui-bs",       "v-bs",       function (v) { call("singularity_set_bloom_strength",  "number", v); });
         bindRange ("ui-fov",      "v-fov",      function (v) { call("singularity_set_fov",             "number", v); }, function (f) { return f.toFixed(0); });
+        bindSelect("ui-quality",  function (v) { call("singularity_set_quality",         "number", v); });
+        bindSelect("ui-res",      function (v) { call("singularity_set_resolution_mode", "number", v); });
+        bindCheck ("ui-adaptive", function (v) { call("singularity_set_adaptive",        "number", v); });
+
+        // Live FPS + internal-scale readout.
+        var fpsEl = document.getElementById("ui-fps");
+        setInterval(function () {
+          try {
+            var fps = Module.ccall("singularity_get_fps", "number", [], []);
+            var pct = Module.ccall("singularity_get_scale_pct", "number", [], []);
+            if (fps > 0) fpsEl.textContent = fps.toFixed(0) + " fps · rendering at " + pct.toFixed(0) + "%";
+          } catch (e) { /* runtime not ready */ }
+        }, 500);
+
+        // Annotation overlay: label positions follow the camera. The
+        // shadow is always canvas-centred (the camera orbits the origin);
+        // its pixel radius and the Doppler-bright side come from the wasm
+        // side, which knows the live camera state.
+        var annotBox  = document.getElementById("annotations");
+        var anShadow  = document.getElementById("an-shadow");
+        var anRing    = document.getElementById("an-ring");
+        var anDoppler = document.getElementById("an-doppler");
+        var anFold    = document.getElementById("an-fold");
+        var canvas    = document.getElementById("canvas");
+
+        function placeAnnotations() {
+          if (annotBox.hidden) return;
+          var W = canvas.clientWidth, H = canvas.clientHeight;
+          var cx = W / 2, cy = H / 2;
+          var r = 40;
+          try { r = Module.ccall("singularity_get_shadow_px_radius", "number", ["number"], [H]); }
+          catch (e) { return; }
+          if (!(r > 4)) { annotBox.hidden = true; return; }
+          var side = 1;
+          try { side = Module.ccall("singularity_get_doppler_side", "number", [], []); } catch (e) {}
+
+          var place = function (el, x, y, show) {
+            el.style.display = show ? "" : "none";
+            el.style.left = Math.max(60, Math.min(W - 60, x)) + "px";
+            el.style.top  = Math.max(12, Math.min(H - 12, y)) + "px";
+          };
+          var discOn    = document.getElementById("ui-disc-on").checked;
+          var dopplerOn = document.getElementById("ui-doppler").checked && discOn;
+
+          place(anShadow,  cx,                              cy,               true);
+          place(anRing,    cx + 0.78 * r * 1.25,            cy - 0.78 * r * 1.25, r > 24);
+          place(anDoppler, cx + side * Math.min(3.2 * r, 0.38 * W), cy + 0.35 * r, dopplerOn);
+          place(anFold,    cx,                              cy - 1.55 * r,    discOn);
+        }
+        setInterval(placeAnnotations, 300);
+
+        document.getElementById("ui-annot").addEventListener("change", function () {
+          annotBox.hidden = !this.checked;
+          if (this.checked) placeAnnotations();
+        });
 
         document.getElementById("ui-reset").addEventListener("click", function () {
           try { Module.ccall("singularity_reset", null, [], []); } catch (e) {}
@@ -187,8 +356,13 @@
           document.getElementById("ui-bt").value       = "0.8";
           document.getElementById("ui-bs").value       = "0.55";
           document.getElementById("ui-fov").value      = "60";
+          document.getElementById("ui-quality").value  = "1";
+          document.getElementById("ui-res").value      = "0";
+          document.getElementById("ui-adaptive").checked = true;
           ["ui-spin","ui-inner","ui-outer","ui-temp","ui-turb","ui-exp","ui-bt","ui-bs","ui-fov"]
             .forEach(function (id) { document.getElementById(id).dispatchEvent(new Event("input")); });
+          ["ui-quality","ui-res","ui-adaptive"]
+            .forEach(function (id) { document.getElementById(id).dispatchEvent(new Event("change")); });
         });
       };
     }
