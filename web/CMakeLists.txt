@@ -40,7 +40,7 @@ set(_emscripten_flags
     # main + the DOM-overlay panel's C bridge (mirrors the EMSCRIPTEN_KEEPALIVE
     # setters at the bottom of web/main.cpp). Listed explicitly so the linker
     # doesn't strip them as unused — KEEPALIVE alone is fragile under LTO.
-    -sEXPORTED_FUNCTIONS=['_main','_singularity_set_metric','_singularity_set_spin','_singularity_set_disc_visible','_singularity_set_disc_inner','_singularity_set_disc_outer','_singularity_set_disc_peak_t','_singularity_set_disc_turbulence','_singularity_set_doppler','_singularity_set_redshift','_singularity_set_exposure','_singularity_set_bloom_threshold','_singularity_set_bloom_strength','_singularity_set_fov','_singularity_reset']
+    -sEXPORTED_FUNCTIONS=['_main','_singularity_set_metric','_singularity_set_spin','_singularity_set_disc_visible','_singularity_set_disc_inner','_singularity_set_disc_outer','_singularity_set_disc_peak_t','_singularity_set_disc_turbulence','_singularity_set_doppler','_singularity_set_redshift','_singularity_set_exposure','_singularity_set_bloom_threshold','_singularity_set_bloom_strength','_singularity_set_fov','_singularity_reset','_singularity_set_quality','_singularity_set_resolution_mode','_singularity_set_adaptive','_singularity_get_fps','_singularity_get_scale_pct','_singularity_get_shadow_px_radius','_singularity_get_doppler_side']
 )
 
 target_compile_options(singularity_web PRIVATE ${_emscripten_flags})

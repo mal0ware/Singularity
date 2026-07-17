@@ -26,6 +26,7 @@ exclude:
   - NEXT_STEPS_WINDOWS.md
   - PHASE7_WEBGPU.md
   - PHASE8_CUDA.md
+  - WEB_PERF_EDU.md
   - examples/
 
 # Don't let Jekyll auto-generate `images/` index pages; just serve the files.

@@ -274,3 +274,80 @@ TEST_CASE("Hamiltonian form preserves 2H = 0 along a long geodesic", "[physics][
     REQUIRE(std::isfinite(H2_end));
     REQUIRE(std::fabs(H2_end) < 1e-2f);
 }
+
+TEST_CASE("Analytic momentum derivatives match finite differences in the bulk",
+          "[physics][kerr-hamilton][analytic]") {
+    // The RHS now uses analytic partials of 2H (SymPy-verified in
+    // verification/test_kerr_ham_analytic.py). Away from the poles the old
+    // centred finite difference was accurate, so the two must agree there —
+    // this pins the C++ transcription of the algebra. Double-precision FD on
+    // the same float expression bounds the comparison noise.
+    auto fd = [](float r, float theta, float p_r, float p_theta, KerrConserved c, bool wrt_r) {
+        const double h = 1.0e-4;
+        const float fp = wrt_r ? kerr_ham_two_H(r + float(h), theta, p_r, p_theta, c)
+                               : kerr_ham_two_H(r, theta + float(h), p_r, p_theta, c);
+        const float fm = wrt_r ? kerr_ham_two_H(r - float(h), theta, p_r, p_theta, c)
+                               : kerr_ham_two_H(r, theta - float(h), p_r, p_theta, c);
+        return (double(fp) - double(fm)) / (2.0 * h);
+    };
+
+    const float radii[] = {3.1f, 6.0f, 12.0f, 40.0f};
+    const float thetas[] = {0.4f, 1.0f, 0.5f * kPi, 2.4f};
+    const float spins[] = {0.0f, 0.5f, 0.94f};
+    for (float r : radii) {
+        for (float theta : thetas) {
+            for (float a : spins) {
+                KerrConserved c{};
+                c.a = a * kM;
+                c.M = kM;
+                c.E = 1.0f;
+                c.L_z = 3.7f;
+                KerrHamState s{};
+                s.r = r;
+                s.theta = theta;
+                s.p_r = 0.6f;
+                s.p_theta = 2.3f;
+
+                const KerrHamState d = kerr_ham_rhs(s, c);
+                const double fd_r = -0.5 * fd(r, theta, s.p_r, s.p_theta, c, true);
+                const double fd_t = -0.5 * fd(r, theta, s.p_r, s.p_theta, c, false);
+
+                const double scale_r = std::max(1.0, std::fabs(fd_r));
+                const double scale_t = std::max(1.0, std::fabs(fd_t));
+                INFO("r=" << r << " theta=" << theta << " a=" << a);
+                REQUIRE(std::fabs(double(d.p_r) - fd_r) / scale_r < 5e-3);
+                REQUIRE(std::fabs(double(d.p_theta) - fd_t) / scale_t < 5e-3);
+            }
+        }
+    }
+}
+
+TEST_CASE("Polar centrifugal barrier is repulsive near the axis",
+          "[physics][kerr-hamilton][analytic]") {
+    // The seam the finite difference produced: approaching θ = π with
+    // L_z ≠ 0, the barrier force must push θ back toward the equator
+    // (dp_θ/dλ < 0 for θ just below π means d²θ/dλ² decelerates). The old
+    // centred difference sampled symmetrically across the pole and returned
+    // ~0 there. Also: with L_z = 0 exactly, the barrier must vanish and the
+    // derivative stay finite.
+    KerrConserved c{};
+    c.a = 0.9f * kM;
+    c.M = kM;
+    c.E = 1.0f;
+    c.L_z = 0.05f;  // small but nonzero — the hard case for the FD form
+
+    KerrHamState s{};
+    s.r = 8.0f;
+    s.theta = kPi - 0.01f;  // just shy of the south pole
+    s.p_r = 0.0f;
+    s.p_theta = 1.0f;  // heading poleward
+
+    const KerrHamState d = kerr_ham_rhs(s, c);
+    REQUIRE(d.p_theta < 0.0f);  // decelerating: barrier repels
+
+    // L_z = 0: barrier gone, force finite and small by comparison.
+    c.L_z = 0.0f;
+    const KerrHamState d0 = kerr_ham_rhs(s, c);
+    REQUIRE(std::isfinite(d0.p_theta));
+    REQUIRE(std::fabs(d0.p_theta) < std::fabs(d.p_theta));
+}

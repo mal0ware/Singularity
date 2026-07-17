@@ -69,6 +69,32 @@ DEVICE INLINE State state_axpy(float a, State x, State y) {
     return r;
 }
 
+// Radius-adaptive step size (gated by SING_FLAG_ADAPTIVE_STEP).
+//
+// Curvature falls off steeply with radius — the geodesic RHS terms scale
+// like M/r² and the bending per unit affine parameter like M/r³ — so a
+// fixed step tuned for the photon-sphere region wastes almost its entire
+// budget crossing nearly-flat space. Grow the step linearly with r:
+//
+//   h(r) = h_base · clamp(r / 6M, 1, 40)
+//
+// Inside r ≤ 6M (photon sphere at 3M, ISCO at 6M for a = 0) integration is
+// unchanged. At r = 30M — a typical disc outer edge — the step matches the
+// desktop Draft preset (0.12 · 5 = 0.6), and the far field tops out at 40×.
+// SIMT-friendly: a pure per-step function of the current state, no
+// data-dependent loop divergence beyond what ray termination already has.
+//
+// Accuracy is validated on the host build of this exact header by
+// tests/test_adaptive_step.cpp (deflection parity with a fine fixed-step
+// reference + E/L conservation). Hand-ported to WGSL in
+// render/webgpu/shaders/geodesic_kernel.wgsl — keep the two in sync.
+DEVICE INLINE float adaptive_h(float h_base, float r, float mass_M) {
+    float mult = r / (6.0f * mass_M);
+    mult = (mult < 1.0f) ? 1.0f : mult;
+    mult = (mult > 40.0f) ? 40.0f : mult;
+    return h_base * mult;
+}
+
 // Schwarzschild geodesic RHS in spherical BL coordinates.
 // du^μ/dλ = -Γ^μ_νσ u^ν u^σ with the non-zero Christoffels of PHYSICS.md §3.
 // rs = 2M (Schwarzschild radius in geometrized units, PHYSICS.md §2).

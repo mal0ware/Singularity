@@ -76,6 +76,12 @@ else()
     option(SINGULARITY_BUILD_APP  "Build desktop app shell (requires SDL3 + ImGui)" OFF)
 endif()
 option(SINGULARITY_ENABLE_ASAN    "Enable AddressSanitizer + UBSan (Debug)" OFF)
+# CI guard: a requested backend whose dependencies are missing normally
+# degrades to a warning + stub build (friendly for local hacking). Under this
+# option it is a hard configure error instead, so CI can never go green while
+# silently building stubs — which is exactly how a Vulkan SDK layout change
+# slipped past the matrix once.
+option(SINGULARITY_REQUIRE_BACKEND "Fail configure if a requested GPU backend's dependencies are missing" OFF)
 
 # ----------------------------------------------------------------------------
 # Platform-aware sanity checks
@@ -206,6 +212,15 @@ if(SINGULARITY_BACKEND_VULKAN)
                 "Vulkan SDK not installed — using vendored headers "
                 "(${_vk_vendored_hdr}) + loader (${_vk_loader})")
         else()
+            if(SINGULARITY_REQUIRE_BACKEND)
+                message(FATAL_ERROR
+                    "SINGULARITY_REQUIRE_BACKEND is ON and the Vulkan SDK was "
+                    "not found (find_package(Vulkan) failed and the vendored-"
+                    "headers + system-loader fallback did not resolve). "
+                    "Refusing to silently build the Vulkan backend as stubs. "
+                    "Install https://vulkan.lunarg.com/sdk/home and set "
+                    "VULKAN_SDK.")
+            endif()
             message(WARNING
                 "Vulkan SDK not found via find_package(Vulkan), and the "
                 "vendored Vulkan-Headers submodule + system loader fallback "

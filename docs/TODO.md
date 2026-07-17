@@ -648,6 +648,44 @@ Pick a subset that interests you. Each is self-contained.
 
 ---
 
+## Phase 10 — Web performance + educational overlay (branch `web-perf-edu`)
+
+> Design doc: `docs/WEB_PERF_EDU.md`. The web demo is the product surface
+> going forward; desktop backends stay maintained (CI) but get no new
+> feature work. Desktop golden images are untouched by construction — the
+> adaptive integrator is flag-gated off outside the web backend.
+
+### Performance
+
+- [x] (`a73fa8c`) `adaptive_h(h_base, r, M)` in `shared_shader/geodesic_math.h` + `SING_FLAG_ADAPTIVE_STEP` in `uniforms.h`; host-validated by `tests/test_adaptive_step.cpp` (deflection parity 0.5%, E/L conservation, ≥5× step reduction — measured 8.3×).
+- [x] (`c176aec`) WGSL hand-port of `adaptive_h` + `step_h()` wired into both trace loops in `geodesic_kernel.wgsl`.
+- [x] (`c176aec`) Dynamic escape radius in the web backend: `escape_r = clamp(2·cam_r, 60M, 200M)`.
+- [x] (`c176aec`) Internal render scale: `WebGPUBackend::set_internal_scale()`, HDR/bloom chain at scale × canvas, linear-filtering blit upscale (BGL sampleType Float + Filtering sampler).
+- [x] (`c176aec`) Dynamic-resolution controller in `web/main.cpp`: frame-time EMA walks {0.4, 0.5, 0.65, 0.8, 1.0} targeting 60 FPS with hysteresis + cooldown.
+- [x] (`c176aec`) Interaction draft mode: h 0.25 / 600 steps while dragging or within 300 ms of a wheel event.
+- [x] (`4ac3d9b`) Panel Performance section: quality preset, resolution mode, adaptive toggle, live FPS + scale readout.
+
+### Educational overlay
+
+- [x] (`4ac3d9b`) Seven "Learn" cards in the DOM panel (shadow, photon ring, disc fold, Doppler, redshift, colors, how it's computed) distilled from PHYSICS.md.
+- [x] (`4ac3d9b`) Annotation overlay: shadow / photon ring / Doppler-side / lensed-far-side labels positioned from live camera state (`singularity_get_shadow_px_radius`, `singularity_get_doppler_side`).
+
+### Validation & ship
+
+- [x] Local emsdk build of the wasm bundle; headless-Chrome smoke on the RTX 3080 (166 vs 59 FPS adaptive on/off; no WebGPU validation errors; all exports live).
+- [x] Full Catch2 + pytest suites green: 77 C++ cases, 65 pytest passed / 10 environment skips.
+- [ ] CI `build-web` green on the branch; merge; Pages deploy picks it up.
+
+### Follow-ups (not this branch)
+
+- [ ] Real Milky Way skybox (ESO panorama; license check; texture plumbing in all four backends).
+- [ ] Desktop backends adopt `SING_FLAG_ADAPTIVE_STEP` (needs a re-golden of the Vulkan/CUDA reference images).
+- [ ] Spectroscopy overlay (hover a disc pixel → local spectrum with Doppler/redshift contributions separated).
+- [ ] FSR-style spatial upscale pass if linear-blit upscale proves too soft at 50%.
+- [x] Kerr polar-axis seam: dotted vertical line below the shadow, pre-existing on `main`. Root cause was twofold: (1) the centred finite difference of 2H cancels the L_z²/sin²θ centrifugal barrier into noise across θ = 0/π — replaced with analytic partials (SymPy-verified, `verification/test_kerr_ham_analytic.py` + Catch2 FD-parity tests); (2) the barrier is stiff, so `kerr_ham_rk4_step` now damps the step with sin θ near the axis (full step beyond ~11°, 1/20 at the pole). Affects all backends via the shared header; Vulkan goldens + backend equivalence re-verified locally (501 pytest passed). Seam confirmed gone in the web render.
+
+---
+
 ## Cross-cutting backlog
 
 - [ ] HDR output (Apple's EDR API on supported displays; Windows HDR10).

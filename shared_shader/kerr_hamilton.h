@@ -15,11 +15,15 @@
 //
 // Method: Hamilton's equations advance ``(t, r, θ, φ, p_r, p_θ)``. The
 // coordinate velocities come from the inverse metric directly; the momentum
-// derivatives come from centred numerical differentiation of the
-// Hamiltonian. At a step size of ``h = 0.1`` the dominant error is RK4
-// truncation, not the O(h_diff²) numerical-differentiation error at
-// ``h_diff = 1e−3``, so the approach is accurate to the float precision of
-// the surrounding integrator.
+// derivatives come from analytic partials of the Hamiltonian (SymPy-verified
+// in ``verification/test_kerr_ham_analytic.py``). An earlier revision used
+// centred numerical differentiation with ``h_diff = 1e−3``; that is accurate
+// in the bulk but fails near the polar axis, where the ``L_z²/sin²θ``
+// centrifugal barrier spikes symmetrically about θ = 0/π and the centred
+// difference cancels the (real, repulsive) force into float noise — visible
+// as a dotted seam along the spin axis behind the hole. The analytic form
+// is exact for ``L_z = 0`` rays (the barrier term vanishes identically) and
+// correctly signed otherwise.
 //
 // PHYSICS.md §7.3 references.
 
@@ -115,19 +119,35 @@ DEVICE INLINE KerrHamState kerr_ham_rhs(KerrHamState s, KerrConserved c) {
     d.r = Delta * s.p_r / Sigma;
     d.theta = s.p_theta / Sigma;
 
-    // Momentum derivatives via centred numerical differentiation of 2H:
-    //   dp_r/dλ     = −(1/2) ∂(2H)/∂r
-    //   dp_θ/dλ     = −(1/2) ∂(2H)/∂θ
-    // h_diff is chosen small enough that O(h²) truncation error is deep
-    // below float precision, yet large enough that subtractive cancellation
-    // in (f(x+h) − f(x−h)) stays negligible at float32.
-    const float h_diff = 1.0e-3f;
-    const float dH_dr = (kerr_ham_two_H(r + h_diff, theta, s.p_r, s.p_theta, c)
-                         - kerr_ham_two_H(r - h_diff, theta, s.p_r, s.p_theta, c))
-                        * (0.5f / h_diff);
-    const float dH_dtheta = (kerr_ham_two_H(r, theta + h_diff, s.p_r, s.p_theta, c)
-                             - kerr_ham_two_H(r, theta - h_diff, s.p_r, s.p_theta, c))
-                            * (0.5f / h_diff);
+    // Momentum derivatives from analytic partials of 2H:
+    //   dp_r/dλ = −(1/2) ∂(2H)/∂r,   dp_θ/dλ = −(1/2) ∂(2H)/∂θ
+    // grouped for differentiation as
+    //   2H = B/(ΣΔ) + L_z²/(Σ sin²θ) + (Δ p_r² + p_θ²)/Σ,
+    //   B  = −A E² + 4 M r a E L_z − a² L_z².
+    // The partials follow by the quotient rule with Σ_r = 2r, Δ_r = 2r−2M,
+    // A_r = 4r(r²+a²) − a²Δ_r sin²θ, Σ_θ = −a² sin2θ, A_θ = −a²Δ sin2θ.
+    // SymPy-verified in verification/test_kerr_ham_analytic.py; the WGSL
+    // hand-port lives in render/webgpu/shaders/geodesic_kernel.wgsl.
+    const float E = c.E;
+    const float L = c.L_z;
+    const float L2 = L * L;
+    const float B = -A * E * E + 4.0f * M * r * a * E * L - a2 * L2;
+    const float Sig_r = 2.0f * r;
+    const float Del_r = 2.0f * r - 2.0f * M;
+    const float A_r = 4.0f * r * (r2 + a2) - a2 * Del_r * s2;
+    const float B_r = -A_r * E * E + 4.0f * M * a * E * L;
+    const float sin2t = 2.0f * st * ct;
+    const float Sig_t = -a2 * sin2t;
+    const float B_t = a2 * Delta * sin2t * E * E;  // −A_θ E², A_θ = −a²Δ sin2θ
+    const float Sigma2 = Sigma * Sigma;
+    const float Dp2 = Delta * s.p_r * s.p_r + s.p_theta * s.p_theta;
+
+    const float dH_dr = B_r / SD - B * (Sig_r * Delta + Sigma * Del_r) / (SD * SD)
+                        - L2 * Sig_r / (Sigma2 * safe_s2) + Del_r * s.p_r * s.p_r / Sigma
+                        - Dp2 * Sig_r / Sigma2;
+    const float dH_dtheta = B_t / SD - B * Sig_t / (Sigma2 * Delta)
+                            - L2 * (Sig_t * safe_s2 + Sigma * sin2t) / (Sigma2 * safe_s2 * safe_s2)
+                            - Dp2 * Sig_t / Sigma2;
     d.p_r = -0.5f * dH_dr;
     d.p_theta = -0.5f * dH_dtheta;
 
@@ -135,7 +155,19 @@ DEVICE INLINE KerrHamState kerr_ham_rhs(KerrHamState s, KerrConserved c) {
 }
 
 // Classical fixed-step RK4 on the six-component state. No sign tracking.
+//
+// Near-pole step damping: within a few degrees of the spin axis the
+// centrifugal barrier term L_z²/sin²θ makes the equations stiff — a full
+// step overshoots the barrier turn and scatters the ray (the residual axis
+// seam once the analytic partials landed). Shrink the step smoothly with
+// sin θ: full step beyond ~11° from the axis, down to 1/20 at the pole.
+// Only the thin near-axis column of rays pays the extra steps.
 DEVICE INLINE KerrHamState kerr_ham_rk4_step(KerrHamState y, float h, KerrConserved c) {
+    float st_abs = sin(y.theta);
+    st_abs = (st_abs < 0.0f) ? -st_abs : st_abs;
+    float pole_scale = st_abs * 5.0f;  // 1.0 at sinθ = 0.2
+    pole_scale = (pole_scale > 1.0f) ? 1.0f : ((pole_scale < 0.05f) ? 0.05f : pole_scale);
+    h = h * pole_scale;
     KerrHamState k1 = kerr_ham_rhs(y, c);
     KerrHamState k2 = kerr_ham_rhs(kerr_ham_state_add(y, kerr_ham_state_scale(k1, 0.5f * h)), c);
     KerrHamState k3 = kerr_ham_rhs(kerr_ham_state_add(y, kerr_ham_state_scale(k2, 0.5f * h)), c);

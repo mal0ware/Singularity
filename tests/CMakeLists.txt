@@ -6,6 +6,7 @@
 
 set(TEST_SOURCES
     test_schwarzschild.cpp
+    test_adaptive_step.cpp
     test_integrator.cpp
     test_kerr.cpp
     test_conserved.cpp
