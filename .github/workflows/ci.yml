@@ -153,12 +153,22 @@ jobs:
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
 
+      # LunarG's official silent install (Qt IFW CLI). The previous
+      # humbletim/install-vulkan-sdk action 7z-extracted the installer, which
+      # broke when LunarG changed the archive layout (>= 1.4 SDKs):
+      # find_package(Vulkan) silently missed the headers and the Vulkan
+      # backend compiled as stubs. The supported installer path is immune to
+      # layout changes; VULKAN_SDK + Bin (dxc) are exported explicitly.
       - name: Install Vulkan SDK (Windows)
         if: matrix.os == 'windows-2022' && matrix.backend == 'vulkan'
-        uses: humbletim/install-vulkan-sdk@v1.2
-        with:
-          version: 1.4.350.0
-          cache: true
+        shell: pwsh
+        run: |
+          $ver = '1.4.350.0'
+          curl.exe -fsSL --retry 3 -o vulkan_sdk.exe "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkan_sdk.exe"
+          Start-Process -Wait .\vulkan_sdk.exe -ArgumentList @('--root', "C:\VulkanSDK\$ver", '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if (-not (Test-Path "C:\VulkanSDK\$ver\Include\vulkan\vulkan.h")) { throw "SDK install incomplete: headers missing" }
+          Add-Content -Path $env:GITHUB_ENV  -Value "VULKAN_SDK=C:\VulkanSDK\$ver"
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\VulkanSDK\$ver\Bin"
 
       - name: Install Vulkan SDK (Linux)
         if: matrix.os == 'ubuntu-latest' && matrix.backend == 'vulkan'
@@ -181,6 +191,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DSINGULARITY_BUILD_TESTS=ON
           -DSINGULARITY_BUILD_CLI=ON
+          -DSINGULARITY_REQUIRE_BACKEND=ON
           ${{ matrix.cmake_flag }}
 
       - name: Build
@@ -363,16 +374,21 @@ jobs:
         with:
           submodules: recursive
 
+      # Official silent install — see the build-test job's step for rationale.
       - name: Install Vulkan SDK (Windows)
         if: matrix.os == 'windows-2022'
-        uses: humbletim/install-vulkan-sdk@v1.2
-        with:
-          version: 1.4.350.0
-          cache: true
+        shell: pwsh
+        run: |
+          $ver = '1.4.350.0'
+          curl.exe -fsSL --retry 3 -o vulkan_sdk.exe "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkan_sdk.exe"
+          Start-Process -Wait .\vulkan_sdk.exe -ArgumentList @('--root', "C:\VulkanSDK\$ver", '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if (-not (Test-Path "C:\VulkanSDK\$ver\Include\vulkan\vulkan.h")) { throw "SDK install incomplete: headers missing" }
+          Add-Content -Path $env:GITHUB_ENV  -Value "VULKAN_SDK=C:\VulkanSDK\$ver"
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\VulkanSDK\$ver\Bin"
 
       - name: Configure + build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSINGULARITY_BUILD_APP=ON
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSINGULARITY_BUILD_APP=ON -DSINGULARITY_REQUIRE_BACKEND=ON
           cmake --build build --config Release --parallel
 
       - name: Verify metallib (macOS)
