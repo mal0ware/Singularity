@@ -4,15 +4,15 @@
 [![codecov](https://codecov.io/gh/mal0ware/Singularity/branch/main/graph/badge.svg)](https://codecov.io/gh/mal0ware/Singularity)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**[Try the live demo in your browser](https://mal0ware.github.io/Singularity/)** — the WebGPU build runs on the project site, no install required.
+**[Try the live demo in your browser](https://mal0ware.github.io/Singularity/)**. The WebGPU build runs on the project site, so there is nothing to install.
 
 ## Status
 
-- **v1.0.0 shipped** (April 2026): Metal, Vulkan, and WebGPU real-time backends, CUDA offline path, live web demo, docs site.
-- **v1.1** (video export and related milestones): not yet started.
-- **Vulkan backend**: compile-validated in CI and runtime-smoked on Windows (RTX 3080, offscreen single-frame `--capture` renders, Schwarzschild and Kerr). Interactive validation and the Metal-equivalence perceptual-hash check are still pending.
+- v1.0.0 shipped in April 2026 with the Metal, Vulkan, and WebGPU real-time backends, the CUDA offline path, the live web demo, and the docs site.
+- v1.1 (video export and related milestones) has not started yet.
+- The Vulkan backend is compile-validated in CI and has been runtime-smoked on Windows (RTX 3080, offscreen single-frame `--capture` renders, Schwarzschild and Kerr). Interactive validation and the Metal-equivalence perceptual-hash check are still pending.
 
-A real-time, physically accurate black-hole renderer. Each pixel of each frame integrates a null geodesic backwards through curved spacetime: a photon launched from the camera, traced through the Schwarzschild or Kerr metric, until it falls through the event horizon, intersects the accretion disc, or escapes to the celestial sphere. The full geodesic equation runs in the compute kernel. No precomputed lensing tables, no screen-space approximations.
+Singularity is a real-time, physically accurate black-hole renderer. For each pixel of each frame it integrates a null geodesic backwards through curved spacetime: a photon launched from the camera is traced through the Schwarzschild or Kerr metric until it falls through the event horizon, intersects the accretion disc, or escapes to the celestial sphere. The compute kernel solves the full geodesic equation, with no precomputed lensing tables or screen-space approximations.
 
 Four GPU backends share a single C++ physics core: Metal on macOS, Vulkan on Windows and Linux, WebGPU in the browser, CUDA for offline supersampled stills.
 
@@ -27,7 +27,7 @@ Four GPU backends share a single C++ physics core: Metal on macOS, Vulkan on Win
 - Orbital camera with mouse-drag azimuth/elevation, scroll-zoom, slider-based FOV.
 - In-app settings panel exposing the metric, disc geometry, cinematics, and physics toggles. Dear ImGui on desktop; DOM overlay on web.
 - Offline supersampling on the CUDA path: 1 to 1024 samples per pixel via Halton(2,3) jittered subpixel sampling, with per-sample tone-mapping for filmic averaging.
-- Verified physics. SymPy-derived Christoffel cross-checks, photon sphere and ISCO closed-form agreement, conservation of energy and angular momentum and Carter's constant under integration.
+- Physics verification against SymPy-derived Christoffel symbols and closed-form photon-sphere and ISCO values, plus conservation of energy and angular momentum under integration.
 
 ## Backends
 
@@ -65,7 +65,7 @@ Pre-built installers ship on the [Releases](https://github.com/mal0ware/Singular
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| Language | C++20 | First-class binding for all four GPU APIs (`metal-cpp`, `Vulkan-Hpp`, CUDA C++, Emscripten `webgpu_cpp.h`). |
+| Language | C++20 | All four GPU APIs have C++ bindings (`metal-cpp`, `Vulkan-Hpp`, CUDA C++, Emscripten `webgpu_cpp.h`). |
 | Build system | CMake 3.27+ | Single graph spans desktop, web, and CUDA targets gated by `SINGULARITY_BACKEND_*` and `SINGULARITY_BUILD_WEB` options. |
 | Windowing | SDL3 | Cross-platform window, input, and Vulkan-surface creation. |
 | In-app UI | Dear ImGui | Metal, Vulkan, and SDL3 backends; the web demo uses a DOM overlay instead. |
@@ -76,7 +76,7 @@ Pre-built installers ship on the [Releases](https://github.com/mal0ware/Singular
 | Web bundling | Emscripten + `--use-port=emdawnwebgpu` | Dawn standards-track WebGPU surface; preloads WGSL via `--preload-file`. |
 | Docs site | Jekyll on GitHub Pages | Hand-rolled layout, KaTeX from CDN. |
 
-The defining design choice is that the physics lives in `shared_shader/` as a set of header-only C++ files: Schwarzschild and Kerr metric tensors, Christoffel symbols, the Hamiltonian formulation in canonical momenta, the integrators, the Novikov-Thorne disc model, the Doppler and redshift factors. These headers compile unchanged into MSL, HLSL, and CUDA C++. WGSL has no preprocessor, so the WGSL kernels are hand-translated against the same algorithms; the cheatsheet is in [`docs/PHASE7_WEBGPU.md`](docs/PHASE7_WEBGPU.md). Every backend therefore consumes the same source-of-truth physics. A bug fix in one place fixes it everywhere, and CI's backend-equivalence test enforces that rendered output agrees within perceptual-hash tolerance across backends.
+The main design decision is that the physics lives in `shared_shader/` as a set of header-only C++ files: Schwarzschild and Kerr metric tensors, Christoffel symbols, the Hamiltonian formulation in canonical momenta, the integrators, the Novikov-Thorne disc model, and the Doppler and redshift factors. These headers compile unchanged into MSL, HLSL, and CUDA C++. WGSL has no preprocessor, so the WGSL kernels are hand-translated from the same algorithms (the cheatsheet is in [`docs/PHASE7_WEBGPU.md`](docs/PHASE7_WEBGPU.md)). Every backend works from the same physics, so a bug fix in one place fixes it everywhere, and CI's backend-equivalence test checks that rendered output agrees across backends within a perceptual-hash tolerance.
 
 ## Physics
 
@@ -91,10 +91,10 @@ The accretion disc uses the Novikov-Thorne thin-disc temperature profile `T(r) �
 The verification harness in `verification/` enforces the physics:
 
 - Schwarzschild Christoffel symbols are re-derived in SymPy from scratch and asserted equal to the hand-coded constants.
-- Photon sphere closure at `r = 1.5 r_s` is checked to 0.5% over 40 impact parameters.
-- Weak-field deflection matches Eddington's `4GM/(bc²)` to 1% over 12 impact parameters.
+- Photon sphere closure at `r = 1.5 r_s` is checked to 0.5% over one orbital period, and to 1% over three periods.
+- Weak-field deflection matches Einstein's `4GM/(bc²)` to 1% at b = 1000 M and 2000 M, and falls off as 1/b (log-log slope within 5%) between b = 100 M and 800 M.
 - Kerr ISCO radii (prograde and retrograde) match closed-form expressions to 0.1% for `a/M ∈ {0, 0.5, 0.94, 0.998}`.
-- Energy `E`, axial angular momentum `L_z`, and Carter's constant `𝒬` are conserved to residual `< 10⁻⁶` over 10,000 integrator steps.
+- For a Schwarzschild photon, energy `E`, angular momentum `L`, and the null condition each drift by less than `3×10⁻⁴` (relative) over 10,000 float32 RK4 steps. The `10⁻⁶` target in `docs/PHYSICS.md` assumes double precision.
 
 The full reference is in [`docs/PHYSICS.md`](docs/PHYSICS.md). Methods, sources, and per-section citations to MTW, Carroll, Thorne, and the James/Tunzelmann/Franklin/Thorne 2015 *Interstellar* VFX paper appear inline.
 
@@ -152,7 +152,7 @@ v1.2+ backlog:
 - Adaptive mesh refinement near caustics.
 - Educational tour mode with precomputed camera paths.
 
-The exhaustive checkbox-level plan is in [`docs/TODO.md`](docs/TODO.md).
+The full checkbox-level plan is in [`docs/TODO.md`](docs/TODO.md).
 
 ## Documentation
 
@@ -208,7 +208,7 @@ Historical 2D and CPU output, kept here as design milestones and as a sanity che
 }
 ```
 
-For the underlying GR and lensing math, cite the source the implementation derives from: James, Tunzelmann, Franklin, & Thorne, *Class. Quantum Grav.* **32** (2015) 065001 (the *Interstellar* VFX paper). Together with the textbooks listed in [`docs/PHYSICS.md`](docs/PHYSICS.md).
+For the underlying GR and lensing math, cite the paper the implementation derives from: James, Tunzelmann, Franklin, & Thorne, *Class. Quantum Grav.* **32** (2015) 065001 (the *Interstellar* VFX paper). Cite the textbooks listed in [`docs/PHYSICS.md`](docs/PHYSICS.md) as well.
 
 ## License
 
@@ -220,7 +220,7 @@ See [`LICENSE`](LICENSE) for the code license and [`LICENSE-docs.md`](LICENSE-do
 
 Source material that defined the project's scope:
 
-- Kavan Dave, *I Coded a Black Hole Simulator in C++*. Defined the MVP scope for Phases 1 through 3.
-- ScienceClic, *Could the physics in Interstellar be real?*. Drove the Kerr / Doppler / Carter direction.
+- Kavan Dave, *I Coded a Black Hole Simulator in C++*, which set the MVP scope for Phases 1 through 3.
+- ScienceClic, *Could the physics in Interstellar be real?*, which led to the Kerr, Doppler, and Carter-constant work.
 
 Physics references in `docs/PHYSICS.md` cite Misner, Thorne, & Wheeler's *Gravitation*; Sean Carroll's *Spacetime and Geometry*; and Kip Thorne's *The Science of Interstellar*. The Kerr lensing implementation follows James, Tunzelmann, Franklin, & Thorne (2015).
